@@ -1,7 +1,7 @@
-# pbi-bridge — Design
+# Semantic Bridge for Power BI — Design
 
 Status: approved direction, owner answers folded in · 2026-11-03
-Working name: `pbi-bridge` (repo/folder), CLI command `pbi`. Both are the designer's call and can be renamed.
+Name: **Semantic Bridge for Power BI** (chosen by the owner). Repo/folder and NuGet tool ID `semantic-bridge`; CLI command `sbridge`; env var prefix `SBRIDGE_` (these three are the designer's call). The name deliberately uses the "… for Power BI" form: Power BI is a Microsoft trademark and the project must not look official; README states "Not affiliated with or endorsed by Microsoft. Power BI is a trademark of Microsoft." Avoid anything that suggests Power BI Report Server.
 
 ## 1. Intent
 
@@ -68,11 +68,11 @@ So the distinguishing features are: **works in both the global and the China (21
 
 ### 6.1 Configuration
 
-- File: `~/.config/pbi-bridge/config.yaml` (Windows: `%APPDATA%\pbi-bridge\config.yaml`), overridable with `--config` / `PBI_BRIDGE_CONFIG`.
-- Supports multiple named **profiles** (e.g. `cn-prod`, `global-test`), selected with `--profile` / `PBI_BRIDGE_PROFILE`; one is the default.
+- File: `~/.config/semantic-bridge/config.yaml` (Windows: `%APPDATA%\semantic-bridge\config.yaml`), overridable with `--config` / `SBRIDGE_CONFIG`.
+- Supports multiple named **profiles** (e.g. `cn-prod`, `global-test`), selected with `--profile` / `SBRIDGE_PROFILE`; one is the default.
 - Per profile:
   - `cloud`: `global` | `china` | `custom`
-  - `tenant_id`, `client_id`, `client_secret` (secret may instead come from env var `PBI_BRIDGE_CLIENT_SECRET` or a `client_secret_env: NAME` indirection; docs recommend env vars over plaintext)
+  - `tenant_id`, `client_id`, `client_secret` (secret may instead come from env var `SBRIDGE_CLIENT_SECRET` or a `client_secret_env: NAME` indirection; docs recommend env vars over plaintext)
   - optional endpoint overrides: `authority_host`, `rest_base_url`, `xmla_base`, `token_scope`
   - `default_workspace` (optional)
   - `allow_write: false` (default)
@@ -87,19 +87,19 @@ So the distinguishing features are: **works in both the global and the China (21
 | XMLA base | `powerbi://api.powerbi.com/v1.0/myorg/{workspace}` | `powerbi://api.powerbi.cn/v1.0/myorg/{workspace}` |
 
   The China values are the ones the owner's production system uses today.
-- `pbi config init` writes a commented template; `pbi config show` prints the resolved config with secrets masked; `pbi config test` checks token acquisition, REST reachability and (if the workspace is on capacity) an XMLA connection, and reports each step separately.
+- `sbridge config init` writes a commented template; `sbridge config show` prints the resolved config with secrets masked; `sbridge config test` checks token acquisition, REST reachability and (if the workspace is on capacity) an XMLA connection, and reports each step separately.
 
 ### 6.2 Capabilities (CLI command ↔ MCP tool, same semantics)
 
 | Capability | CLI | MCP tool | Path |
 |---|---|---|---|
-| List workspaces | `pbi workspaces` | `list_workspaces` | REST |
-| List datasets in a workspace | `pbi datasets -w <ws>` | `list_datasets` | REST |
-| Model metadata | `pbi schema -w <ws> -d <dataset> [--table T]` | `get_model_schema` | XMLA (INFO.* DAX functions / TMSCHEMA rowsets); REST fallback where possible |
-| Run DAX | `pbi query -w <ws> -d <dataset> "<DAX>" [-f table|json|csv] [--max-rows N]` (also `--file q.dax`, stdin) | `run_dax` | XMLA, or REST `executeQueries` |
-| Update description *(write)* | `pbi describe -w <ws> -d <dataset> --measure M "<text>"` (also `--table`, `--column T[C]`, batch from a file) | `update_description` | XMLA read-write (TOM) |
-| Refresh dataset *(write)* | `pbi refresh -w <ws> -d <dataset> [--wait]` | `refresh_dataset` | REST |
-| Refresh status | `pbi refresh-status ...` | `get_refresh_status` | REST |
+| List workspaces | `sbridge workspaces` | `list_workspaces` | REST |
+| List datasets in a workspace | `sbridge datasets -w <ws>` | `list_datasets` | REST |
+| Model metadata | `sbridge schema -w <ws> -d <dataset> [--table T]` | `get_model_schema` | XMLA (INFO.* DAX functions / TMSCHEMA rowsets); REST fallback where possible |
+| Run DAX | `sbridge query -w <ws> -d <dataset> "<DAX>" [-f table|json|csv] [--max-rows N]` (also `--file q.dax`, stdin) | `run_dax` | XMLA, or REST `executeQueries` |
+| Update description *(write)* | `sbridge describe -w <ws> -d <dataset> --measure M "<text>"` (also `--table`, `--column T[C]`, batch from a file) | `update_description` | XMLA read-write (TOM) |
+| Refresh dataset *(write)* | `sbridge refresh -w <ws> -d <dataset> [--wait]` | `refresh_dataset` | REST |
+| Refresh status | `sbridge refresh-status ...` | `get_refresh_status` | REST |
 
 Workspaces and datasets are addressable by name or ID.
 
@@ -122,10 +122,10 @@ Workspaces and datasets are addressable by name or ID.
 
 ### 6.4 MCP server
 
-- `pbi mcp` — stdio transport (default; what Claude Desktop, Cursor, VS Code launch).
-- `pbi mcp --http --port 8080` — Streamable HTTP transport (used by the Docker image).
-  - Writes over HTTP need a second, explicit opt-in (designer's call): with `--http`, write tools are registered only if both `allow_write: true` and `--allow-http-write` (env `PBI_BRIDGE_ALLOW_HTTP_WRITE=1`) are set; otherwise the server logs that writes are disabled for HTTP. The Docker image never sets it by default. Reason: over HTTP the only confirmation step is the agent's own instruction-following, and anyone who reaches the server shares the credentials.
-  - Optional static bearer token (`PBI_BRIDGE_HTTP_TOKEN`); when set, requests without it are rejected. When not set, the server logs a startup warning. Bind to `127.0.0.1` by default; `--host 0.0.0.0` must be explicit (the Docker image sets it).
+- `sbridge mcp` — stdio transport (default; what Claude Desktop, Cursor, VS Code launch).
+- `sbridge mcp --http --port 8080` — Streamable HTTP transport (used by the Docker image).
+  - Writes over HTTP need a second, explicit opt-in (designer's call): with `--http`, write tools are registered only if both `allow_write: true` and `--allow-http-write` (env `SBRIDGE_ALLOW_HTTP_WRITE=1`) are set; otherwise the server logs that writes are disabled for HTTP. The Docker image never sets it by default. Reason: over HTTP the only confirmation step is the agent's own instruction-following, and anyone who reaches the server shares the credentials.
+  - Optional static bearer token (`SBRIDGE_HTTP_TOKEN`); when set, requests without it are rejected. When not set, the server logs a startup warning. Bind to `127.0.0.1` by default; `--host 0.0.0.0` must be explicit (the Docker image sets it).
 - The MCP server uses one profile for its lifetime (chosen at start).
 - Tool descriptions should be concise and teach the agent the workflow: list → schema → query; prefer aggregations; respect truncation notes.
 - README includes ready-to-paste client configs for Claude Desktop, Claude Code, Cursor, VS Code.
@@ -133,8 +133,8 @@ Workspaces and datasets are addressable by name or ID.
 ### 6.5 Distribution
 
 - Self-contained single-file binaries per OS/arch via GitHub Releases: win-x64, win-arm64, linux-x64, linux-arm64, osx-x64, osx-arm64 (subject to §8 risk 1).
-- `dotnet tool install -g pbi-bridge` for people who already have .NET.
-- Docker image (multi-arch) running `pbi mcp --http`, credentials via env vars or a mounted config file; docs carry the intranet/test-only + "you own the security" warning.
+- `dotnet tool install -g semantic-bridge` for people who already have .NET.
+- Docker image (multi-arch) running `sbridge mcp --http`, credentials via env vars or a mounted config file; docs carry the intranet/test-only + "you own the security" warning.
 - License: MIT (designer's call; Apache-2.0 is the alternative if patent language is wanted).
 - Third-party Microsoft packages (ADOMD.NET, TOM, MSAL) ship under their own Microsoft license terms, not MIT. Precedent: Tabular Editor 2 is MIT-licensed and redistributes the Analysis Services client libraries. Builder's task: read the license terms bundled with the exact package versions used, confirm redistribution in binaries / dotnet tool / Docker image is allowed, and add a `THIRD-PARTY-NOTICES.md`. If redistribution turns out not to be allowed, stop and raise it with the owner before releasing.
 
@@ -165,7 +165,7 @@ Workspaces and datasets are addressable by name or ID.
 
 ## 10. Done looks like (v1)
 
-- A user with only a service principal and a PPU/Premium workspace in either cloud can: download one binary, run `pbi config init`, fill in IDs, run `pbi config test`, then `pbi query ...`, and add `pbi mcp` to Claude Desktop and ask questions about their model.
+- A user with only a service principal and a PPU/Premium workspace in either cloud can: download one binary, run `sbridge config init`, fill in IDs, run `sbridge config test`, then `sbridge query ...`, and add `sbridge mcp` to Claude Desktop and ask questions about their model.
 - A Pro-workspace user gets the same via REST, with documented limits.
 - Writes are impossible until `allow_write: true`, and every write is confirmed and reported.
 - README covers: what it is / isn't, comparison with Microsoft's MCP servers, Entra app setup per cloud (permissions and tenant settings), config reference, client configs, Docker with security warning, write-risk warning.

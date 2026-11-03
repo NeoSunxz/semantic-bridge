@@ -1,0 +1,12 @@
+bin/
+obj/
+*.user
+.vs/
+.idea/
+TestResults/
+artifacts/
+CLAUDE.local.md
+.claude/settings.local.json
+.env
+*.env
+config.local.yaml
