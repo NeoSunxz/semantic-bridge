@@ -1,0 +1,17 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <AssemblyName>sbridge</AssemblyName>
+    <RootNamespace>SemanticBridge.Cli</RootNamespace>
+    <PackAsTool>true</PackAsTool>
+    <ToolCommandName>sbridge</ToolCommandName>
+    <PackageId>semantic-bridge</PackageId>
+    <Description>CLI for Power BI semantic models over XMLA and the REST API (not affiliated with Microsoft).</Description>
+    <PublishTrimmed>false</PublishTrimmed>
+    <PublishAot>false</PublishAot>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="System.CommandLine" />
+    <ProjectReference Include="..\SemanticBridge.Core\SemanticBridge.Core.csproj" />
+  </ItemGroup>
+</Project>
