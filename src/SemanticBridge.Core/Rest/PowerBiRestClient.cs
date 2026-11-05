@@ -66,6 +66,40 @@ public sealed class PowerBiRestClient
             d.TryGetProperty("configuredBy", out var by) && by.ValueKind == JsonValueKind.String ? by.GetString() : null))];
     }
 
+    /// <summary>Queues a refresh (notifyOption NoNotification). Returns the refresh request ID when the service sends one.</summary>
+    internal async Task<string?> TriggerRefreshAsync(string workspaceId, string datasetId, CancellationToken ct)
+    {
+        var path = $"/groups/{Uri.EscapeDataString(workspaceId)}/datasets/{Uri.EscapeDataString(datasetId)}/refreshes";
+        string? requestId = null;
+        try
+        {
+            // A POST is retried on 429 only: retrying after a 5xx could queue a second refresh.
+            await SendAsync(HttpMethod.Post, path, """{"notifyOption":"NoNotification"}""", DefaultCallTimeout, ErrorKind.Rest, ct,
+                headers => requestId = headers.Location?.Segments.LastOrDefault()?.Trim('/')
+                    ?? (headers.TryGetValues("RequestId", out var ids) ? ids.FirstOrDefault() : null),
+                retryServerErrors: false).ConfigureAwait(false);
+        }
+        catch (BridgeException ex) when (ex.Kind == ErrorKind.Rest && ex.Message.Contains("in progress", StringComparison.OrdinalIgnoreCase))
+        {
+            throw new BridgeException(ErrorKind.Rest, "A refresh is already in progress for this dataset. Check it with 'refresh-status' and try again when it has finished. " + ex.Message);
+        }
+        return string.IsNullOrWhiteSpace(requestId) ? null : requestId;
+    }
+
+    /// <summary>Refresh history, newest first.</summary>
+    public async Task<IReadOnlyList<RefreshEntry>> GetRefreshesAsync(string workspaceId, string datasetId, int top, CancellationToken ct)
+    {
+        var path = $"/groups/{Uri.EscapeDataString(workspaceId)}/datasets/{Uri.EscapeDataString(datasetId)}/refreshes?$top={top}";
+        var body = await SendAsync(HttpMethod.Get, path, null, DefaultCallTimeout, ErrorKind.Rest, ct).ConfigureAwait(false);
+        using var doc = ParseJson(body);
+        return [.. Values(doc.RootElement).Select(r =>
+        {
+            var exception = _scrubber.Scrub(Str(r, "serviceExceptionJson"));
+            return new RefreshEntry(Str(r, "requestId"), Str(r, "refreshType"), Str(r, "status"), Str(r, "startTime"), Str(r, "endTime"),
+                exception.Length == 0 ? null : exception.Length > 500 ? Truncate(exception, 500) + " (truncated)" : exception);
+        })];
+    }
+
     /// <summary>Cheap reachability/authorization probe: lists at most one workspace.</summary>
     public async Task PingAsync(CancellationToken ct) =>
         await SendAsync(HttpMethod.Get, "/groups?$top=1", null, DefaultCallTimeout, ErrorKind.Rest, ct).ConfigureAwait(false);
@@ -199,7 +233,8 @@ public sealed class PowerBiRestClient
         return Truncate(_scrubber.Scrub(text), 500);
     }
 
-    private async Task<string> SendAsync(HttpMethod method, string path, string? jsonBody, TimeSpan timeout, ErrorKind badRequestKind, CancellationToken ct)
+    private async Task<string> SendAsync(HttpMethod method, string path, string? jsonBody, TimeSpan timeout, ErrorKind badRequestKind, CancellationToken ct,
+        Action<HttpResponseHeaders>? onSuccessHeaders = null, bool retryServerErrors = true)
     {
         var url = _config.Endpoints.RestBaseUrl.TrimEnd('/') + path;
         using var cts = CancellationTokenSource.CreateLinkedTokenSource(ct);
@@ -226,9 +261,13 @@ public sealed class PowerBiRestClient
                 using (response)
                 {
                     var text = await response.Content.ReadAsStringAsync(cts.Token).ConfigureAwait(false);
-                    if (response.IsSuccessStatusCode) return text;
+                    if (response.IsSuccessStatusCode)
+                    {
+                        onSuccessHeaders?.Invoke(response.Headers);
+                        return text;
+                    }
 
-                    if (IsRetryable(response.StatusCode) && attempt < MaxAttempts)
+                    if (IsRetryable(response.StatusCode) && (retryServerErrors || response.StatusCode == HttpStatusCode.TooManyRequests) && attempt < MaxAttempts)
                     {
                         await _delay(RetryDelay(response, attempt), cts.Token).ConfigureAwait(false);
                         continue;
@@ -272,6 +311,8 @@ public sealed class PowerBiRestClient
         }
         detail = Truncate(_scrubber.Scrub(detail), 500);
         var status = $"HTTP {(int)response.StatusCode} {response.ReasonPhrase}".TrimEnd();
+        if (response.StatusCode == HttpStatusCode.TooManyRequests)
+            detail = ("Too many requests or a refresh limit was reached; wait and retry later. " + detail).Trim();
         return string.IsNullOrWhiteSpace(detail) ? $"Power BI REST API returned {status}." : $"Power BI REST API returned {status}: {detail}";
     }
 

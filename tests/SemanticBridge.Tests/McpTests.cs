@@ -14,12 +14,12 @@ public sealed class McpToolTests
     private static string Text(CallToolResult r) => ((TextContentBlock)Assert.Single(r.Content)).Text;
 
     [Fact]
-    public async Task ListsExactlyTheFourReadTools()
+    public async Task ListsExactlyTheFiveReadTools()
     {
         var (tools, _) = McpTestData.Tools();
         await using var mcp = await InProcessMcp.StartAsync(McpTestData.ReadTools(tools));
         var listed = await mcp.Client.ListToolsAsync(cancellationToken: TestContext.Current.CancellationToken);
-        Assert.Equal(["get_model_schema", "list_datasets", "list_workspaces", "run_dax"], listed.Select(t => t.Name).Order().ToArray());
+        Assert.Equal(["get_model_schema", "get_refresh_status", "list_datasets", "list_workspaces", "run_dax"], listed.Select(t => t.Name).Order().ToArray());
         Assert.All(listed, t => Assert.False(string.IsNullOrWhiteSpace(t.Description)));
         var runDax = listed.Single(t => t.Name == "run_dax");
         var required = runDax.JsonSchema.GetProperty("required").EnumerateArray().Select(e => e.GetString()).ToArray();
@@ -200,11 +200,11 @@ public sealed class McpToolRegistryTests
     [InlineData(true, false, false)]
     [InlineData(true, true, false)]
     [InlineData(true, true, true)]
-    public void ReadToolCountIsFourWhateverTheGateSays(bool allowWrite, bool http, bool allowHttpWrite)
+    public void ReadToolsAreAlwaysThereAndWriteToolsFollowTheGate(bool allowWrite, bool http, bool allowHttpWrite)
     {
         var (tools, _) = McpTestData.Tools();
         var set = McpToolRegistry.Create(tools, new WriteGate(allowWrite, http, allowHttpWrite), TextWriter.Null);
-        Assert.Equal(4, set.Count);
+        Assert.Equal(allowWrite && (!http || allowHttpWrite) ? 7 : 5, set.Count);
     }
 
     [Theory]
@@ -281,7 +281,7 @@ public sealed class McpHttpTests
             Endpoint = endpoint,
             AdditionalHeaders = new Dictionary<string, string> { ["Authorization"] = "Bearer right-token-0123456789" },
         }), cancellationToken: TestContext.Current.CancellationToken);
-        Assert.Equal(4, (await client.ListToolsAsync(cancellationToken: TestContext.Current.CancellationToken)).Count);
+        Assert.Equal(5, (await client.ListToolsAsync(cancellationToken: TestContext.Current.CancellationToken)).Count);
         Assert.DoesNotContain("WARNING", log.ToString());
     }
 
@@ -291,7 +291,7 @@ public sealed class McpHttpTests
         var (app, endpoint, log) = await StartAsync(null);
         await using var _ = app;
         await using var client = await McpClient.CreateAsync(new HttpClientTransport(new HttpClientTransportOptions { Endpoint = endpoint }), cancellationToken: TestContext.Current.CancellationToken);
-        Assert.Equal(4, (await client.ListToolsAsync(cancellationToken: TestContext.Current.CancellationToken)).Count);
+        Assert.Equal(5, (await client.ListToolsAsync(cancellationToken: TestContext.Current.CancellationToken)).Count);
         Assert.Contains("SBRIDGE_HTTP_TOKEN", log.ToString());
         Assert.Contains("WARNING", log.ToString());
     }

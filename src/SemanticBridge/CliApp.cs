@@ -8,6 +8,7 @@ using SemanticBridge.Core.Config;
 using SemanticBridge.Core.Diagnostics;
 using SemanticBridge.Core.Results;
 using SemanticBridge.Core.Safety;
+using SemanticBridge.Core.Xmla;
 
 namespace SemanticBridge.Cli;
 
@@ -27,13 +28,16 @@ public sealed class CliApp
     private readonly TextReader _in;
     private readonly Func<string, string?> _getEnv;
     private readonly Func<bool> _inputRedirected;
+    private readonly Func<ResolvedConfig, WriteGate?, BridgeService>? _serviceFactory;
     private readonly SecretScrubber _scrubber = new();
 
     private readonly Option<string?> _configOption = new("--config") { Description = "Path to config.yaml (env: SBRIDGE_CONFIG).", Recursive = true };
     private readonly Option<string?> _profileOption = new("--profile") { Description = "Profile to use (env: SBRIDGE_PROFILE).", Recursive = true };
 
-    private CliApp(TextWriter output, TextWriter error, TextReader input, Func<string, string?> getEnv, Func<bool> inputRedirected)
+    private CliApp(TextWriter output, TextWriter error, TextReader input, Func<string, string?> getEnv, Func<bool> inputRedirected,
+        Func<ResolvedConfig, WriteGate?, BridgeService>? serviceFactory)
     {
+        _serviceFactory = serviceFactory;
         _out = output;
         _err = error;
         _in = input;
@@ -42,9 +46,10 @@ public sealed class CliApp
     }
 
     public static async Task<int> RunAsync(string[] args, TextWriter output, TextWriter error, TextReader input,
-        Func<string, string?> getEnv, Func<bool> inputRedirected, CancellationToken ct)
+        Func<string, string?> getEnv, Func<bool> inputRedirected, CancellationToken ct,
+        Func<ResolvedConfig, WriteGate?, BridgeService>? serviceFactory = null)
     {
-        var app = new CliApp(output, error, input, getEnv, inputRedirected);
+        var app = new CliApp(output, error, input, getEnv, inputRedirected, serviceFactory);
         var root = app.BuildRoot();
         var parse = root.Parse(args);
         if (parse.Errors.Count > 0)
@@ -66,6 +71,9 @@ public sealed class CliApp
         root.Subcommands.Add(BuildDatasets());
         root.Subcommands.Add(BuildSchema());
         root.Subcommands.Add(BuildQuery());
+        root.Subcommands.Add(BuildDescribe());
+        root.Subcommands.Add(BuildRefresh());
+        root.Subcommands.Add(BuildRefreshStatus());
         root.Subcommands.Add(BuildMcp());
         return root;
     }
@@ -209,6 +217,135 @@ public sealed class CliApp
         return cmd;
     }
 
+    private Command BuildDescribe()
+    {
+        var cmd = new Command("describe", "WRITE: update the description of a table, column or measure on the live model (needs allow_write: true and an XMLA Read Write endpoint). Shows old -> new and asks for confirmation.");
+        var text = new Argument<string?>("description") { Description = "The new description text (empty text clears it). Not used with --file.", Arity = ArgumentArity.ZeroOrOne };
+        var ws = WorkspaceOption();
+        var ds = DatasetOption();
+        var table = new Option<string?>("--table") { Description = "Table to describe." };
+        var column = new Option<string?>("--column") { Description = "Column to describe, as Table[Column] (quote table names that contain brackets: 'My [Table]'[Col])." };
+        var measure = new Option<string?>("--measure") { Description = "Measure to describe, by name." };
+        var file = new Option<string?>("--file") { Description = "Batch of updates: a YAML or JSON list of {table|column|measure, description}." };
+        var yes = new Option<bool>("--yes", "-y") { Description = "Apply without asking for confirmation (for scripts)." };
+        var format = FormatOption("table", "json");
+        cmd.Arguments.Add(text);
+        foreach (var o in new Option[] { ws, ds, table, column, measure, file, yes, format }) cmd.Options.Add(o);
+        cmd.SetAction((pr, ct) => Run(async () =>
+        {
+            var cfg = LoadConfig(pr);
+            var gate = new WriteGate(cfg.AllowWrite);
+            gate.EnsureOpen();
+            var updates = ReadDescriptionUpdates(pr.GetValue(text), pr.GetValue(table), pr.GetValue(column), pr.GetValue(measure), pr.GetValue(file));
+            var assumeYes = pr.GetValue(yes);
+            RequireConfirmable(assumeYes);
+
+            using var rt = OpenService(cfg, gate);
+            var plan = await rt.Service.PlanDescriptionsAsync(pr.GetValue(ws), pr.GetValue(ds)!, updates, ct).ConfigureAwait(false);
+            foreach (var u in plan.Unchanged) _err.WriteLine($"unchanged: {u.Display} already has this description.");
+            var applied = false;
+            if (plan.Changes.Count == 0) _err.WriteLine("No changes to apply.");
+            else
+            {
+                _err.WriteLine($"Workspace '{plan.Workspace}', dataset '{plan.Dataset}':");
+                foreach (var c in plan.Changes) _err.WriteLine($"  {c.Display}: {Quote(c.Old)} -> {Quote(c.New)}");
+                if (!assumeYes && !Confirm($"Apply {plan.Changes.Count} change(s)?"))
+                {
+                    _err.WriteLine("aborted: no changes were made.");
+                    return ExitRuntime;
+                }
+                await rt.Service.ApplyDescriptionsAsync(plan, ct).ConfigureAwait(false);
+                applied = true;
+            }
+
+            if (pr.GetValue(format) == "json")
+                _out.WriteLine(JsonOutput.Serialize(new { applied, workspace = plan.Workspace, dataset = plan.Dataset, changes = plan.Changes, unchanged = plan.Unchanged }));
+            else
+                _out.Write(TableFormatter.Render(["type", "target", "old", "new"], plan.Changes.Select(c => new object?[] { c.Type, c.Display, c.Old, c.New }).ToList()));
+            if (applied) _err.WriteLine($"-- applied {plan.Changes.Count} change(s)");
+            return ExitOk;
+        }));
+        return cmd;
+    }
+
+    private Command BuildRefresh()
+    {
+        var cmd = new Command("refresh", "WRITE: queue a dataset refresh (needs allow_write: true). Asks for confirmation. Exit code is 1 when a --wait ends failed or times out.");
+        var ws = WorkspaceOption();
+        var ds = DatasetOption();
+        var wait = new Option<bool>("--wait") { Description = "Poll until the refresh completes, fails or --timeout passes." };
+        var timeout = new Option<int>("--timeout") { Description = "With --wait: seconds to wait (1..86400).", DefaultValueFactory = _ => 600 };
+        timeout.Validators.Add(r =>
+        {
+            if (r.GetValueOrDefault<int>() is < 1 or > 86400) r.AddError("--timeout must be between 1 and 86400.");
+        });
+        var yes = new Option<bool>("--yes", "-y") { Description = "Refresh without asking for confirmation (for scripts)." };
+        foreach (var o in new Option[] { ws, ds, wait, timeout, yes }) cmd.Options.Add(o);
+        cmd.SetAction((pr, ct) => Run(async () =>
+        {
+            var cfg = LoadConfig(pr);
+            var gate = new WriteGate(cfg.AllowWrite);
+            gate.EnsureOpen();
+            var assumeYes = pr.GetValue(yes);
+            RequireConfirmable(assumeYes);
+            if (!assumeYes && !Confirm($"Refresh dataset '{pr.GetValue(ds)}' now? This uses capacity and changes the data every report shows."))
+            {
+                _err.WriteLine("aborted: no refresh was started.");
+                return ExitRuntime;
+            }
+
+            using var rt = OpenService(cfg, gate);
+            var trigger = await rt.Service.RefreshAsync(pr.GetValue(ws), pr.GetValue(ds)!, ct, trackForWait: pr.GetValue(wait)).ConfigureAwait(false);
+            _out.WriteLine("accepted: true");
+            _out.WriteLine($"workspace: {trigger.WorkspaceName}");
+            _out.WriteLine($"dataset: {trigger.DatasetName}");
+            if (trigger.RequestId is not null) _out.WriteLine($"request_id: {trigger.RequestId}");
+            if (!pr.GetValue(wait)) return ExitOk;
+
+            _err.WriteLine("Waiting for the refresh to finish...");
+            var result = await rt.Service.WaitForRefreshAsync(trigger, TimeSpan.FromSeconds(pr.GetValue(timeout)), ct).ConfigureAwait(false);
+            if (result.Entry is { } e)
+            {
+                _out.WriteLine($"status: {e.Status}");
+                _out.WriteLine($"start_time: {e.StartTime}");
+                if (e.EndTime.Length > 0) _out.WriteLine($"end_time: {e.EndTime}");
+                if (e.Error is not null) _out.WriteLine($"error: {_scrubber.Scrub(e.Error)}");
+            }
+            if (result.Entry is null)
+            {
+                _out.WriteLine("status: unknown");
+                _err.WriteLine("error: could not identify this refresh in the history within the wait, so its outcome is unknown (it may still be running). Check 'sbridge refresh-status'.");
+                return ExitRuntime;
+            }
+            if (result.TimedOut)
+            {
+                _err.WriteLine($"error: the refresh did not finish within {pr.GetValue(timeout)} s; it may still be running. Check 'sbridge refresh-status'.");
+                return ExitRuntime;
+            }
+            return result.Entry is { Status: "Completed" } ? ExitOk : ExitRuntime;
+        }));
+        return cmd;
+    }
+
+    private Command BuildRefreshStatus()
+    {
+        var cmd = new Command("refresh-status", "Show a dataset's recent refresh history (newest first).");
+        var ws = WorkspaceOption();
+        var ds = DatasetOption();
+        var top = new Option<int>("--top") { Description = $"How many entries (1..{BridgeService.MaxRefreshHistory}).", DefaultValueFactory = _ => 5 };
+        var format = FormatOption("table", "json", "csv");
+        foreach (var o in new Option[] { ws, ds, top, format }) cmd.Options.Add(o);
+        cmd.SetAction((pr, ct) => Run(async () =>
+        {
+            using var rt = OpenService(LoadConfig(pr), null);
+            var items = await rt.Service.GetRefreshStatusAsync(pr.GetValue(ws), pr.GetValue(ds)!, pr.GetValue(top), ct).ConfigureAwait(false);
+            WriteList(pr.GetValue(format)!, items, ["request_id", "refresh_type", "status", "start_time", "end_time", "error"],
+                items.Select(r => new object?[] { r.RequestId, r.RefreshType, r.Status, r.StartTime, r.EndTime, r.Error }).ToList());
+            return ExitOk;
+        }));
+        return cmd;
+    }
+
     private Command BuildMcp()
     {
         var cmd = new Command("mcp", "Run the MCP server (stdio by default; --http for Streamable HTTP). Uses one profile for its lifetime.");
@@ -228,8 +365,9 @@ public sealed class CliApp
             cfg.RequireCredentials();
             var overHttp = pr.GetValue(http);
             var httpWrite = pr.GetValue(allowHttpWrite) || _getEnv(McpHost.EnvAllowHttpWrite) == "1";
-            using var rt = CreateRuntime(cfg);
-            var tools = McpToolRegistry.Create(new McpTools(rt.Service, _scrubber), new WriteGate(cfg.AllowWrite, overHttp, httpWrite), _err);
+            var gate = new WriteGate(cfg.AllowWrite, overHttp, httpWrite);
+            using var rt = CreateRuntime(cfg, gate);
+            var tools = McpToolRegistry.Create(new McpTools(rt.Service, _scrubber), gate, _err);
             if (!overHttp)
             {
                 await McpHost.RunStdioAsync(tools, cfg.QueryTimeoutSeconds, _err, ct).ConfigureAwait(false);
@@ -249,6 +387,54 @@ public sealed class CliApp
     }
 
     // ---- helpers ----------------------------------------------------------
+
+    private const long MaxBatchFileBytes = 1024 * 1024;
+
+    private static IReadOnlyList<DescriptionUpdate> ReadDescriptionUpdates(string? text, string? table, string? column, string? measure, string? file)
+    {
+        var targets = new[] { table, column, measure }.Count(t => t is not null);
+        if (file is not null)
+        {
+            if (targets > 0 || text is not null)
+                throw new BridgeException(ErrorKind.Usage, "With --file, do not also give --table/--column/--measure or a description text.");
+            string content;
+            try
+            {
+                if (new FileInfo(file).Length > MaxBatchFileBytes)
+                    throw new BridgeException(ErrorKind.Usage, $"Batch file '{file}' is larger than the {MaxBatchFileBytes / 1024 / 1024} MB limit.");
+                content = File.ReadAllText(file);
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or ArgumentException or NotSupportedException)
+            {
+                // Say what failed, never the file's content or the OS message (it can quote paths and data).
+                throw new BridgeException(ErrorKind.Usage, $"Cannot read batch file '{file}' ({ex.GetType().Name}).");
+            }
+            return DescriptionBatch.Parse(content, json: file.EndsWith(".json", StringComparison.OrdinalIgnoreCase));
+        }
+        if (targets != 1)
+            throw new BridgeException(ErrorKind.Usage, "Give exactly one of --table, --column or --measure (or --file for a batch).");
+        if (text is null)
+            throw new BridgeException(ErrorKind.Usage, "No description text given. Pass it as an argument (\"\" clears the description).");
+        var target = table is not null ? DescriptionTargets.Table(table) : column is not null ? DescriptionTargets.ParseColumn(column) : DescriptionTargets.Measure(measure!);
+        return [new DescriptionUpdate(target, text)];
+    }
+
+    /// <summary>Refuses before any network call when a confirmation would be needed but stdin is not a terminal.</summary>
+    private void RequireConfirmable(bool assumeYes)
+    {
+        if (!assumeYes && _inputRedirected())
+            throw new BridgeException(ErrorKind.Usage, "This command changes the live model and needs confirmation, but stdin is not a terminal. Pass --yes to proceed without asking.");
+    }
+
+    private bool Confirm(string question)
+    {
+        _err.Write(question + " [y/N] ");
+        _err.Flush();
+        var answer = _in.ReadLine()?.Trim();
+        return string.Equals(answer, "y", StringComparison.OrdinalIgnoreCase) || string.Equals(answer, "yes", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static string Quote(string? value) => value is null ? "(none)" : "\"" + value.Replace("\r", "\\r", StringComparison.Ordinal).Replace("\n", "\\n", StringComparison.Ordinal) + "\"";
 
     private string ReadQueryText(string? argument, string? file)
     {
@@ -310,7 +496,22 @@ public sealed class CliApp
 
     private BridgeRuntime CreateRuntime(ParseResult pr) => CreateRuntime(LoadConfig(pr));
 
-    private BridgeRuntime CreateRuntime(ResolvedConfig cfg) => BridgeRuntime.Create(cfg, _scrubber);
+    private BridgeRuntime CreateRuntime(ResolvedConfig cfg, WriteGate? gate = null) => BridgeRuntime.Create(cfg, _scrubber, gate);
+
+    private sealed class ServiceScope(BridgeService service, IDisposable? owner) : IDisposable
+    {
+        public BridgeService Service => service;
+
+        public void Dispose() => owner?.Dispose();
+    }
+
+    /// <summary>The real runtime, or the injected service in tests (so write flows run without a network).</summary>
+    private ServiceScope OpenService(ResolvedConfig cfg, WriteGate? gate)
+    {
+        if (_serviceFactory is { } factory) return new ServiceScope(factory(cfg, gate), null);
+        var runtime = CreateRuntime(cfg, gate);
+        return new ServiceScope(runtime.Service, runtime);
+    }
 
     private async Task<int> Run(Func<Task<int>> body)
     {

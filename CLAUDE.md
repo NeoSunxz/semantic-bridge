@@ -10,7 +10,7 @@ Project: Semantic Bridge for Power BI. Keep this file short.
 
 An open-source CLI (`sbridge`) and MCP server that let people and AI tools use their existing Power BI semantic models over **XMLA** and the **Power BI REST API**, in the global and China (21Vianet) clouds, with the user's own service-principal credentials.
 
-Status: Phases 1–2 of [the v1 plan](docs/superpowers/plans/2026-11-04-v1-plan.md) done (core, read-only CLI, MCP server over stdio/HTTP); not yet verified against a live tenant.
+Status: Phases 1–3 of [the v1 plan](docs/superpowers/plans/2026-11-04-v1-plan.md) done (core, CLI, MCP server over stdio/HTTP, gated writes); not yet verified against a live tenant.
 
 Design (source of truth for scope): [docs/superpowers/specs/2026-11-03-semantic-bridge-design.md](docs/superpowers/specs/2026-11-03-semantic-bridge-design.md)
 

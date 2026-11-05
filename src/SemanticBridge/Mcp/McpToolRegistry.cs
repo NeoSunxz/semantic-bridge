@@ -18,11 +18,13 @@ public static class McpToolRegistry
             McpServerTool.Create(tools.ListDatasets),
             McpServerTool.Create(tools.GetModelSchema),
             McpServerTool.Create(tools.RunDax),
+            McpServerTool.Create(tools.GetRefreshStatus),
         };
 
         if (gate.IsOpen)
         {
-            // Write tools are registered here once they exist.
+            list.Add(McpServerTool.Create(tools.UpdateDescription));
+            list.Add(McpServerTool.Create(tools.RefreshDataset));
             return list;
         }
         // Over stdio a closed gate is the default and needs no comment; over HTTP the opt-in is easy to miss, so say why.

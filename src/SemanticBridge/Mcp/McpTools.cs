@@ -8,11 +8,13 @@ using SemanticBridge.Core.Config;
 using SemanticBridge.Core.Diagnostics;
 using SemanticBridge.Core.Results;
 using SemanticBridge.Core.Safety;
+using SemanticBridge.Core.Xmla;
 
 namespace SemanticBridge.Cli.Mcp;
 
 /// <summary>
-/// The read-only MCP tools. Thin adapters over <see cref="BridgeService"/>, the same facade the CLI uses.
+/// The MCP tools. Thin adapters over <see cref="BridgeService"/>, the same facade the CLI uses. The write tools
+/// (update_description, refresh_dataset) are only registered by <see cref="McpToolRegistry"/> when the write gate is open.
 /// Failures come back as tool errors (isError) with scrubbed engine text so the agent can correct itself.
 /// </summary>
 public sealed class McpTools(BridgeService service, SecretScrubber scrubber)
@@ -55,6 +57,54 @@ public sealed class McpTools(BridgeService service, SecretScrubber scrubber)
             var viaValue = string.IsNullOrWhiteSpace(via) ? (QueryVia?)null : ConfigLoader.ParseVia(via, "via");
             var result = await service.QueryAsync(workspace, dataset, dax, max_rows, viaValue, ct).ConfigureAwait(false);
             return SerializeQuery(result);
+        }, ct);
+
+    [McpServerTool(Name = "get_refresh_status", ReadOnly = true)]
+    [Description("Get a dataset's recent refresh history (newest first): request_id, refresh_type, status (Completed, Failed, Unknown = still running, ...), start/end time and the error if it failed. Use it after refresh_dataset.")]
+    public Task<CallToolResult> GetRefreshStatus(
+        [Description("Dataset name or ID.")] string dataset,
+        [Description("Workspace name or ID. Optional when the profile has a default workspace.")] string? workspace = null,
+        [Description("How many entries to return (1-100, default 5).")] int? top = null,
+        CancellationToken ct = default) =>
+        Run(async () => JsonOutput.Serialize(await service.GetRefreshStatusAsync(workspace, dataset, top, ct).ConfigureAwait(false)), ct);
+
+    [McpServerTool(Name = "update_description", ReadOnly = false, Destructive = true, Idempotent = true)]
+    [Description("WRITE: change the description of a table, column or measure on the LIVE model; it affects every report built on it and takes effect immediately. "
+        + "Before calling, show the user the target and the new text and get their explicit confirmation; never call it on your own initiative. "
+        + "Requires the XMLA endpoint to be Read Write and Write permission on the dataset. The result reports the old and new description (and `unchanged` if the text was already set).")]
+    public Task<CallToolResult> UpdateDescription(
+        [Description("Dataset name or ID.")] string dataset,
+        [Description("table, column or measure.")] string target_type,
+        [Description("The table name; for a column Table[Column] (quote table names with brackets: 'My [Table]'[Col]); for a measure its name.")] string target,
+        [Description("The new description text. An empty string clears it.")] string description,
+        [Description("Workspace name or ID. Optional when the profile has a default workspace.")] string? workspace = null,
+        CancellationToken ct = default) =>
+        Run(async () =>
+        {
+            var parsed = (target_type ?? string.Empty).Trim().ToLowerInvariant() switch
+            {
+                "table" => DescriptionTargets.Table(target),
+                "column" => DescriptionTargets.ParseColumn(target),
+                "measure" => DescriptionTargets.Measure(target),
+                _ => throw new BridgeException(ErrorKind.Usage, "target_type must be table, column or measure."),
+            };
+            var plan = await service.UpdateDescriptionsAsync(workspace, dataset, [new DescriptionUpdate(parsed, description ?? string.Empty)], ct).ConfigureAwait(false);
+            var node = JsonNode.Parse(JsonOutput.Serialize(plan))!.AsObject();
+            node["applied"] = plan.Changes.Count > 0;
+            return node.ToJsonString(JsonOutput.Options);
+        }, ct);
+
+    [McpServerTool(Name = "refresh_dataset", ReadOnly = false, Destructive = false, Idempotent = false)]
+    [Description("WRITE: queue a refresh of the dataset (uses capacity and changes the data every report shows). Before calling, get the user's explicit confirmation; never call it on your own initiative. "
+        + "Returns accepted=true and a request_id when the service provides one; the refresh runs asynchronously, so follow it with get_refresh_status.")]
+    public Task<CallToolResult> RefreshDataset(
+        [Description("Dataset name or ID.")] string dataset,
+        [Description("Workspace name or ID. Optional when the profile has a default workspace.")] string? workspace = null,
+        CancellationToken ct = default) =>
+        Run(async () =>
+        {
+            var trigger = await service.RefreshAsync(workspace, dataset, ct).ConfigureAwait(false);
+            return JsonOutput.Serialize(new { accepted = true, workspace = trigger.WorkspaceName, dataset = trigger.DatasetName, request_id = trigger.RequestId });
         }, ct);
 
     internal static string SerializeQuery(QueryResult result)

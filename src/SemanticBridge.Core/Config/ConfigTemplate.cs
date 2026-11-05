@@ -9,9 +9,11 @@ public static class ConfigTemplate
         # Environment variables: SBRIDGE_CONFIG, SBRIDGE_PROFILE, SBRIDGE_TENANT_ID, SBRIDGE_CLIENT_ID,
         # SBRIDGE_CLIENT_SECRET, SBRIDGE_CLOUD. With none of this file's profiles needed, the last four are enough.
         #
-        # WARNING: write capabilities (allow_write: true) change the LIVE semantic model and affect every
-        # report built on it. Keep allow_write false. If you need writes, use a separate profile with a
-        # separate service principal that has write rights, and enable it only when needed.
+        # WARNING: write capabilities (allow_write: true: description updates, dataset refresh) change the
+        # LIVE semantic model and affect every report built on it. After an XMLA write, a model that was
+        # authored in Power BI Desktop can no longer be downloaded as a PBIX file. Keep allow_write false.
+        # If you need writes, use a separate profile with a separate service principal that has write
+        # rights, and enable it only when needed.
 
         # Profile used when --profile / SBRIDGE_PROFILE is not given.
         default_profile: default

@@ -27,7 +27,7 @@ public sealed class BridgeRuntime : IDisposable
     public IXmlaClient Xmla { get; }
     public BridgeService Service { get; }
 
-    public static BridgeRuntime Create(ResolvedConfig config, SecretScrubber? sharedScrubber = null)
+    public static BridgeRuntime Create(ResolvedConfig config, SecretScrubber? sharedScrubber = null, WriteGate? gate = null)
     {
         var scrubber = sharedScrubber ?? new SecretScrubber();
         scrubber.Register(config.ClientSecret);
@@ -36,7 +36,7 @@ public sealed class BridgeRuntime : IDisposable
         var http = new HttpClient { Timeout = Timeout.InfiniteTimeSpan };
         var rest = new PowerBiRestClient(http, config, tokens, scrubber);
         var xmla = new AdomdXmlaClient(new TokenAdomdConnectionFactory(config, tokens, scrubber), scrubber, config.QueryTimeoutSeconds);
-        return new BridgeRuntime(http, scrubber, tokens, rest, xmla, new BridgeService(config, rest, xmla));
+        return new BridgeRuntime(http, scrubber, tokens, rest, xmla, new BridgeService(config, rest, xmla, new TomDescriptionWriter(config, tokens, scrubber), gate));
     }
 
     public void Dispose() => _http.Dispose();
