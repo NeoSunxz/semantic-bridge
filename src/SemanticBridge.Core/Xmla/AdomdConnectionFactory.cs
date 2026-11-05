@@ -8,7 +8,7 @@ namespace SemanticBridge.Core.Xmla;
 /// <summary>The one place that creates and opens ADOMD connections.</summary>
 public interface IAdomdConnectionFactory
 {
-    /// <summary>Opens a connection. Failures are classified: <see cref="ErrorKind.NoXmlaEndpoint"/> or <see cref="ErrorKind.Xmla"/>.</summary>
+    /// <summary>Opens a connection. Failures are classified as <see cref="ErrorKind.Xmla"/>.</summary>
     Task<AdomdConnection> OpenAsync(string workspace, string? dataset, CancellationToken ct);
 }
 

@@ -7,7 +7,8 @@ public static class ConfigTemplate
         #
         # Precedence, highest first: command-line flag > environment variable > this file > cloud preset.
         # Environment variables: SBRIDGE_CONFIG, SBRIDGE_PROFILE, SBRIDGE_TENANT_ID, SBRIDGE_CLIENT_ID,
-        # SBRIDGE_CLIENT_SECRET, SBRIDGE_CLOUD. With none of this file's profiles needed, the last four are enough.
+        # SBRIDGE_CLIENT_SECRET, SBRIDGE_CLOUD. If the config file has no profiles, SBRIDGE_TENANT_ID,
+        # SBRIDGE_CLIENT_ID and SBRIDGE_CLIENT_SECRET (plus optional SBRIDGE_CLOUD) are enough (env-only setup).
         #
         # WARNING: write capabilities (allow_write: true: description updates, dataset refresh) change the
         # LIVE semantic model and affect every report built on it. After an XMLA write, a model that was

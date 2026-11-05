@@ -12,8 +12,8 @@ public sealed record ConfigLoadOptions(string? ConfigPath = null, string? Profil
 /// <summary>
 /// Resolves the effective configuration. Precedence, highest first:
 /// command-line flag (--config, --profile) &gt; environment variable (SBRIDGE_*) &gt; config file &gt; cloud preset / built-in default.
-/// With no profile in the file, SBRIDGE_TENANT_ID / SBRIDGE_CLIENT_ID / SBRIDGE_CLIENT_SECRET / SBRIDGE_CLOUD alone are
-/// enough ("env-only" setup for Docker and CI). With a profile selected, those variables override the profile's values.
+/// With no profile in the file, SBRIDGE_TENANT_ID, SBRIDGE_CLIENT_ID and SBRIDGE_CLIENT_SECRET (plus optional
+/// SBRIDGE_CLOUD, default global) are enough ("env-only" setup for Docker and CI). With a profile selected, those variables override the profile's values.
 /// </summary>
 public static partial class ConfigLoader
 {
