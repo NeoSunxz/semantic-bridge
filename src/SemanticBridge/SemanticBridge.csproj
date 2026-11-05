@@ -6,10 +6,35 @@
     <PackAsTool>true</PackAsTool>
     <ToolCommandName>sbridge</ToolCommandName>
     <PackageId>semantic-bridge</PackageId>
-    <Description>CLI for Power BI semantic models over XMLA and the REST API (not affiliated with Microsoft).</Description>
+    <Description>CLI and MCP server for Power BI semantic models over XMLA and the Power BI REST API, with your own service-principal credentials. Not affiliated with or endorsed by Microsoft.</Description>
+    <Authors>NeoSunxz</Authors>
+    <Copyright>Copyright (c) 2026 NeoSunxz</Copyright>
+    <PackageLicenseExpression>MIT</PackageLicenseExpression>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+    <PackageProjectUrl>https://github.com/NeoSunxz/semantic-bridge</PackageProjectUrl>
+    <RepositoryUrl>https://github.com/NeoSunxz/semantic-bridge</RepositoryUrl>
+    <RepositoryType>git</RepositoryType>
+    <PackageTags>powerbi;semantic-model;xmla;dax;mcp;cli</PackageTags>
     <PublishTrimmed>false</PublishTrimmed>
     <PublishAot>false</PublishAot>
   </PropertyGroup>
+  <!-- Self-contained single-file publish; only active when a RuntimeIdentifier is given (dotnet publish -r <rid>). -->
+  <PropertyGroup Condition="'$(RuntimeIdentifier)' != ''">
+    <SelfContained>true</SelfContained>
+    <PublishSingleFile>true</PublishSingleFile>
+  </PropertyGroup>
+  <!-- The WAM broker native library (pulled in transitively by ADOMD.NET) is never used: auth is a plain confidential client.
+       Leaving it out keeps the publish output a single file. Safe because only a confidential client (service principal secret/certificate)
+       is used: no interactive or broker-based sign-in, so the native broker library is never loaded. -->
+  <Target Name="ExcludeMsalBrokerNative" AfterTargets="ComputeResolvedFilesToPublishList">
+    <ItemGroup>
+      <ResolvedFileToPublish Remove="@(ResolvedFileToPublish)" Condition="$([System.String]::Copy('%(Filename)').Contains('msalruntime'))" />
+    </ItemGroup>
+  </Target>
+  <ItemGroup>
+    <None Include="..\..\README.md;..\..\LICENSE;..\..\THIRD-PARTY-NOTICES.md" Pack="true" PackagePath="" Visible="false" />
+    <None Include="..\..\licenses\*" Pack="true" PackagePath="licenses\" Visible="false" />
+  </ItemGroup>
   <ItemGroup>
     <InternalsVisibleTo Include="SemanticBridge.Tests" />
   </ItemGroup>
