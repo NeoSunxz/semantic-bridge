@@ -189,6 +189,40 @@ public sealed class ConfigLoaderTests : IDisposable
         Assert.Throws<BridgeException>(() => ConfigLoader.Load(new ConfigLoadOptions(path), Env()));
     }
 
+    [Theory]
+    [InlineData("https://api.powerbi.com/v1.0/myorg/{workspace}")]
+    [InlineData("xmlas://host/{workspace}")]
+    public void XmlaBaseWithWrongSchemeIsRejected(string value)
+    {
+        var path = Write($"profiles:\n  p:\n    cloud: global\n    xmla_base: \"{value}\"\n");
+        var ex = Assert.Throws<BridgeException>(() => ConfigLoader.Load(new ConfigLoadOptions(path), Env()));
+        Assert.Contains("powerbi://", ex.Message);
+        Assert.Contains("asazure://", ex.Message);
+        Assert.DoesNotContain(value, ex.Message);
+    }
+
+    [Theory]
+    [InlineData("POWERBI://api.example.test/v1.0/myorg/{workspace}")]
+    [InlineData("asazure://westus.asazure.windows.net/{workspace}")]
+    public void XmlaBaseSchemeCheckIsCaseInsensitiveAndAcceptsAsazure(string value)
+    {
+        var path = Write($"profiles:\n  p:\n    cloud: global\n    xmla_base: \"{value}\"\n");
+        Assert.Equal(value, ConfigLoader.Load(new ConfigLoadOptions(path), Env()).Endpoints.XmlaBase);
+    }
+
+    [Fact]
+    public void InvalidCloudAndViaErrorsDoNotEchoTheRawValue()
+    {
+        const string Raw = "s3cr3t-looking-value";
+        var cloud = Assert.Throws<BridgeException>(() => ConfigLoader.Load(new ConfigLoadOptions(Write(TwoProfiles)), Env((ConfigLoader.EnvCloud, Raw))));
+        Assert.DoesNotContain(Raw, cloud.Message);
+        Assert.Contains("global, china or custom", cloud.Message);
+        var via = Assert.Throws<BridgeException>(() => ConfigLoader.ParseVia(Raw, "default_via"));
+        Assert.DoesNotContain(Raw, via.Message);
+        Assert.Contains("default_via", via.Message);
+        Assert.Contains("auto, xmla or rest", via.Message);
+    }
+
     [Fact]
     public void UnknownKeysAreRejectedWithTheKeyName()
     {

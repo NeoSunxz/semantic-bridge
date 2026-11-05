@@ -127,7 +127,9 @@ public static partial class ConfigLoader
         }
         RequireHttpsUrl("authority_host", authority!, cloud == Cloud.Custom);
         RequireHttpsUrl("rest_base_url", rest!, cloud == Cloud.Custom);
-        if (!xmla!.Contains(CloudPresets.WorkspacePlaceholder, StringComparison.Ordinal))
+        if (!xmla!.StartsWith("powerbi://", StringComparison.OrdinalIgnoreCase) && !xmla.StartsWith("asazure://", StringComparison.OrdinalIgnoreCase))
+            throw new BridgeException(ErrorKind.Config, "xmla_base must start with powerbi:// or asazure://.");
+        if (!xmla.Contains(CloudPresets.WorkspacePlaceholder, StringComparison.Ordinal))
             throw new BridgeException(ErrorKind.Config, $"xmla_base must contain the {CloudPresets.WorkspacePlaceholder} placeholder, e.g. powerbi://api.powerbi.com/v1.0/myorg/{{workspace}}.");
 
         // 4. Credentials.
@@ -217,7 +219,7 @@ public static partial class ConfigLoader
         "auto" => QueryVia.Auto,
         "xmla" => QueryVia.Xmla,
         "rest" => QueryVia.Rest,
-        _ => throw new BridgeException(ErrorKind.Config, $"Invalid {what} '{text}': expected auto, xmla or rest."),
+        _ => throw new BridgeException(ErrorKind.Config, $"Invalid value for {what}: expected auto, xmla or rest."),
     };
 
     private static Cloud ParseCloud(string text, string source) => text.Trim().ToLowerInvariant() switch
@@ -225,7 +227,7 @@ public static partial class ConfigLoader
         "global" => Cloud.Global,
         "china" => Cloud.China,
         "custom" => Cloud.Custom,
-        _ => throw new BridgeException(ErrorKind.Config, $"Invalid cloud '{text}' ({source}): expected global, china or custom."),
+        _ => throw new BridgeException(ErrorKind.Config, $"Invalid value for cloud ({source}): expected global, china or custom."),
     };
 
     private static (string Name, ProfileSection Section) Lookup(Dictionary<string, ProfileSection?> profiles, string name, string source)
