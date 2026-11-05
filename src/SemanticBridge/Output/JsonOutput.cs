@@ -5,7 +5,7 @@ namespace SemanticBridge.Cli.Output;
 
 public static class JsonOutput
 {
-    private static readonly JsonSerializerOptions Options = new()
+    internal static readonly JsonSerializerOptions Options = new()
     {
         WriteIndented = false,
         Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping,

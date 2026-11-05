@@ -125,7 +125,8 @@ Workspaces and datasets are addressable by name or ID.
 - `sbridge mcp` — stdio transport (default; what Claude Desktop, Cursor, VS Code launch).
 - `sbridge mcp --http --port 8080` — Streamable HTTP transport (used by the Docker image).
   - Writes over HTTP need a second, explicit opt-in (designer's call): with `--http`, write tools are registered only if both `allow_write: true` and `--allow-http-write` (env `SBRIDGE_ALLOW_HTTP_WRITE=1`) are set; otherwise the server logs that writes are disabled for HTTP. The Docker image never sets it by default. Reason: over HTTP the only confirmation step is the agent's own instruction-following, and anyone who reaches the server shares the credentials.
-  - Optional static bearer token (`SBRIDGE_HTTP_TOKEN`); when set, requests without it are rejected. When not set, the server logs a startup warning. Bind to `127.0.0.1` by default; `--host 0.0.0.0` must be explicit (the Docker image sets it).
+  - Static bearer token (`SBRIDGE_HTTP_TOKEN`); when set, requests without it are rejected. On the default loopback bind it is optional and its absence logs a startup warning. Bind to `127.0.0.1` by default; `--host 0.0.0.0` must be explicit (the Docker image sets it) and then **requires the token**: without it the server refuses to start (exit 2) unless `--no-auth` (env `SBRIDGE_HTTP_NO_AUTH=1`) is passed, which starts with a loud warning naming the public bind.
+  - Browser-origin hardening: requests with a non-loopback `Origin` (or, on a loopback bind, a non-loopback `Host`) are rejected with 403 to block DNS rebinding; request bodies are capped at 1,000,000 bytes.
 - The MCP server uses one profile for its lifetime (chosen at start).
 - Tool descriptions should be concise and teach the agent the workflow: list → schema → query; prefer aggregations; respect truncation notes.
 - README includes ready-to-paste client configs for Claude Desktop, Claude Code, Cursor, VS Code.

@@ -79,7 +79,7 @@ public sealed class BridgeService(ResolvedConfig config, PowerBiRestClient rest,
     {
         var warnings = new List<string>();
         if (requested is null) return (config.MaxRows, warnings);
-        if (requested < 1) throw new BridgeException(ErrorKind.Usage, "--max-rows must be at least 1.");
+        if (requested < 1) throw new BridgeException(ErrorKind.Usage, "max rows must be at least 1.");
         if (requested > config.MaxRowsCeiling)
         {
             warnings.Add($"Requested max rows {requested} exceeds max_rows_ceiling ({config.MaxRowsCeiling}); using {config.MaxRowsCeiling}.");

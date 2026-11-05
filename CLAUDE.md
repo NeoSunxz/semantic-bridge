@@ -10,7 +10,7 @@ Project: Semantic Bridge for Power BI. Keep this file short.
 
 An open-source CLI (`sbridge`) and MCP server that let people and AI tools use their existing Power BI semantic models over **XMLA** and the **Power BI REST API**, in the global and China (21Vianet) clouds, with the user's own service-principal credentials.
 
-Status: Phase 1 of [the v1 plan](docs/superpowers/plans/2026-11-04-v1-plan.md) done (core + read-only CLI); not yet verified against a live tenant.
+Status: Phases 1–2 of [the v1 plan](docs/superpowers/plans/2026-11-04-v1-plan.md) done (core, read-only CLI, MCP server over stdio/HTTP); not yet verified against a live tenant.
 
 Design (source of truth for scope): [docs/superpowers/specs/2026-11-03-semantic-bridge-design.md](docs/superpowers/specs/2026-11-03-semantic-bridge-design.md)
 
@@ -33,7 +33,7 @@ dotnet format --verify-no-changes
 dotnet run --project src/SemanticBridge -- <args>  # run the CLI (sbridge)
 ```
 
-- Layout: `src/SemanticBridge.Core` (all logic; `BridgeService` is the one facade both front-ends call), `src/SemanticBridge` (the `sbridge` exe: CLI now, `sbridge mcp` later), `tests/SemanticBridge.Tests` (no network), `tests/SemanticBridge.IntegrationTests` (skipped unless `SBRIDGE_IT_*` or `SBRIDGE_*` credentials are set).
+- Layout: `src/SemanticBridge.Core` (all logic; `BridgeService` is the one facade both front-ends call), `src/SemanticBridge` (the `sbridge` exe: CLI commands and `sbridge mcp`, under `Mcp/`), `tests/SemanticBridge.Tests` (no network), `tests/SemanticBridge.IntegrationTests` (skipped unless `SBRIDGE_IT_*` or `SBRIDGE_*` credentials are set).
 - Package versions are central in `Directory.Packages.props`; `spike/` is a throwaway live-connectivity probe outside the solution.
 
 ## Red lines

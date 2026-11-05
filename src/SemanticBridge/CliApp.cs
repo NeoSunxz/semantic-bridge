@@ -1,5 +1,7 @@
 using System.CommandLine;
 using System.Diagnostics;
+using Microsoft.Extensions.Hosting;
+using SemanticBridge.Cli.Mcp;
 using SemanticBridge.Cli.Output;
 using SemanticBridge.Core;
 using SemanticBridge.Core.Config;
@@ -64,6 +66,7 @@ public sealed class CliApp
         root.Subcommands.Add(BuildDatasets());
         root.Subcommands.Add(BuildSchema());
         root.Subcommands.Add(BuildQuery());
+        root.Subcommands.Add(BuildMcp());
         return root;
     }
 
@@ -201,6 +204,45 @@ public sealed class CliApp
             using var rt = CreateRuntime(cfg);
             var result = await rt.Service.QueryAsync(pr.GetValue(ws), pr.GetValue(ds)!, text, pr.GetValue(maxRows), viaValue, ct).ConfigureAwait(false);
             WriteQueryResult(pr.GetValue(format)!, result);
+            return ExitOk;
+        }));
+        return cmd;
+    }
+
+    private Command BuildMcp()
+    {
+        var cmd = new Command("mcp", "Run the MCP server (stdio by default; --http for Streamable HTTP). Uses one profile for its lifetime.");
+        var http = new Option<bool>("--http") { Description = "Serve Streamable HTTP instead of stdio. Bearer token from SBRIDGE_HTTP_TOKEN (required on a non-loopback host)." };
+        var host = new Option<string>("--host") { Description = "HTTP bind address (use 0.0.0.0 to listen on all interfaces).", DefaultValueFactory = _ => "127.0.0.1" };
+        var port = new Option<int>("--port") { Description = "HTTP port.", DefaultValueFactory = _ => 8080 };
+        port.Validators.Add(r =>
+        {
+            if (r.GetValueOrDefault<int>() is < 1 or > 65535) r.AddError("--port must be between 1 and 65535.");
+        });
+        var noAuth = new Option<bool>("--no-auth") { Description = "Allow --http on a non-loopback --host without SBRIDGE_HTTP_TOKEN (unauthenticated; dangerous). Env: SBRIDGE_HTTP_NO_AUTH=1." };
+        var allowHttpWrite = new Option<bool>("--allow-http-write") { Description = "Allow write tools over HTTP (also needs allow_write: true). Env: SBRIDGE_ALLOW_HTTP_WRITE=1." };
+        foreach (var o in new Option[] { http, host, port, noAuth, allowHttpWrite }) cmd.Options.Add(o);
+        cmd.SetAction((pr, ct) => Run(async () =>
+        {
+            var cfg = LoadConfig(pr);
+            cfg.RequireCredentials();
+            var overHttp = pr.GetValue(http);
+            var httpWrite = pr.GetValue(allowHttpWrite) || _getEnv(McpHost.EnvAllowHttpWrite) == "1";
+            using var rt = CreateRuntime(cfg);
+            var tools = McpToolRegistry.Create(new McpTools(rt.Service, _scrubber), new WriteGate(cfg.AllowWrite, overHttp, httpWrite), _err);
+            if (!overHttp)
+            {
+                await McpHost.RunStdioAsync(tools, cfg.QueryTimeoutSeconds, _err, ct).ConfigureAwait(false);
+                return ExitOk;
+            }
+            var token = _getEnv(McpHost.EnvHttpToken);
+            _scrubber.Register(token);
+            _scrubber.Register(token?.Trim());
+            var unauthenticated = pr.GetValue(noAuth) || _getEnv(McpHost.EnvHttpNoAuth) == "1";
+            await using var app = McpHost.BuildHttp(tools, new HttpOptions(pr.GetValue(host)!, pr.GetValue(port), string.IsNullOrEmpty(token) ? null : token, unauthenticated), _err);
+            await app.StartAsync(ct).ConfigureAwait(false);
+            _err.WriteLine($"mcp: listening on {string.Join(", ", app.Urls.Select(u => u + "/mcp"))} (profile '{cfg.ProfileName}')");
+            await app.WaitForShutdownAsync(ct).ConfigureAwait(false);
             return ExitOk;
         }));
         return cmd;

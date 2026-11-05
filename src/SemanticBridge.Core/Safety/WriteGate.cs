@@ -6,6 +6,8 @@ namespace SemanticBridge.Core.Safety;
 /// </summary>
 public sealed class WriteGate(bool allowWrite, bool overHttp = false, bool allowHttpWrite = false)
 {
+    public bool OverHttp => overHttp;
+
     public bool IsOpen => allowWrite && (!overHttp || allowHttpWrite);
 
     public string? ClosedReason =>

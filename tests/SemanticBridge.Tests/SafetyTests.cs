@@ -16,6 +16,16 @@ public sealed class SecretScrubberTests
         Assert.DoesNotContain("access-token-abcdef", text);
     }
 
+    [Fact]
+    public void PaddedSecretRegisteredRawAndTrimmedScrubsTheTrimmedFormToo()
+    {
+        const string padded = "  http-token-0123456789  ";
+        var s = new SecretScrubber();
+        s.Register(padded);
+        s.Register(padded.Trim());
+        Assert.DoesNotContain("http-token-0123456789", s.Scrub("rejected http-token-0123456789 here"));
+    }
+
     [Theory]
     [InlineData("Data Source=powerbi://x;User ID=app:a@b;Password=hunter2;Initial Catalog=d", "hunter2")]
     [InlineData("conn pwd=abc123; rest", "abc123")]

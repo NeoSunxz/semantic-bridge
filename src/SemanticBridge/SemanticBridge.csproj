@@ -11,7 +11,13 @@
     <PublishAot>false</PublishAot>
   </PropertyGroup>
   <ItemGroup>
+    <InternalsVisibleTo Include="SemanticBridge.Tests" />
+  </ItemGroup>
+  <ItemGroup>
     <PackageReference Include="System.CommandLine" />
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+    <PackageReference Include="ModelContextProtocol" />
+    <PackageReference Include="ModelContextProtocol.AspNetCore" />
     <ProjectReference Include="..\SemanticBridge.Core\SemanticBridge.Core.csproj" />
   </ItemGroup>
 </Project>
