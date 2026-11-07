@@ -6,7 +6,7 @@ Semantic Bridge for Power BI 是一个命令行工具（`sbridge`）加一个 MC
 
 本项目与微软无关联，也未获微软认可。Power BI 是微软的商标。
 
-> **状态：预发布。** [v1 计划](docs/superpowers/plans/2026-11-04-v1-plan.md)的第 1–5 阶段已实现。尚未发布任何版本。目前的实机验证只覆盖 linux-x64 加中国区（世纪互联）租户；全球云尚未实机验证。见[状态与平台](#状态与平台)。
+> **状态：v0.1.0，首个正式版本。** [v1 计划](docs/superpowers/plans/2026-11-04-v1-plan.md)的第 1–5 阶段已实现。目前的实机验证只覆盖 linux-x64 加中国区（世纪互联）租户；全球云尚未实机验证。见[状态与平台](#状态与平台)。
 
 ## 它是什么，不是什么
 
@@ -39,7 +39,7 @@ Semantic Bridge for Power BI 是一个命令行工具（`sbridge`）加一个 MC
 
 ## 状态与平台
 
-- 第 1–5 阶段已实现。首次发布尚未进行。
+- 第 1–5 阶段已实现，并已发布为 v0.1.0（GitHub Releases 和 GHCR 镜像）。
 - 2026-11-07 在 linux-x64 上，针对中国区（世纪互联）的 Premium Per User（PPU）工作区做了实机验证：XMLA（使用 MSAL 访问令牌认证）、REST、schema、查询、刷新、刷新状态、描述写入、stdio 和 HTTP 两种 MCP，以及 linux-x64 单文件二进制。
 - 全球云尚未实机验证。Pro（仅 REST）工作区尚未在真实租户上测试。
 - 其他 RID 上的 XMLA 未验证：`linux-arm64`、`win-x64`、`win-arm64`、`osx-arm64`、`osx-x64`。
@@ -49,7 +49,7 @@ Semantic Bridge for Power BI 是一个命令行工具（`sbridge`）加一个 MC
 
 ### 发布二进制
 
-从 [GitHub Releases](https://github.com/NeoSunxz/semantic-bridge/releases) 页面下载对应平台的压缩包。每个压缩包只含一个文件：`sbridge`（Windows 上是 `sbridge.exe`）。二进制是自包含的，不需要安装 .NET。运行前请对照 `SHA256SUMS` 校验压缩包。发布流程不对二进制签名，所以首次运行时操作系统可能会给出警告。
+从 [GitHub Releases](https://github.com/NeoSunxz/semantic-bridge/releases) 页面下载对应平台的压缩包。每个压缩包里有单文件程序 `sbridge`（Windows 上是 `sbridge.exe`），以及许可文件（`LICENSE`、`licenses/` 和 `THIRD-PARTY-NOTICES.md`）。二进制是自包含的，不需要安装 .NET。运行前请对照 `SHA256SUMS` 校验压缩包。发布流程不对二进制签名，所以首次运行时操作系统可能会给出警告。
 
 ### .NET 工具
 
@@ -66,7 +66,7 @@ docker pull ghcr.io/neosunxz/semantic-bridge:latest
 docker pull neosunxz/semantic-bridge:latest
 ```
 
-只有配置了 Docker Hub 机密时才会推送 Docker Hub 镜像。镜像为 `linux/amd64` 和 `linux/arm64` 构建。版本标签和 `latest` 在发布标签时创建。见 [Docker 与 HTTP 传输](#docker-与-http-传输)。
+只有配置了 Docker Hub 机密时才会推送 Docker Hub 镜像，所以目前只发布了 GHCR 镜像。镜像为 `linux/amd64` 和 `linux/arm64` 构建。版本标签和 `latest` 在发布标签时创建。见 [Docker 与 HTTP 传输](#docker-与-http-传输)。
 
 ## 设置
 
