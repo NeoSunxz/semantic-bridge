@@ -31,6 +31,18 @@
       <ResolvedFileToPublish Remove="@(ResolvedFileToPublish)" Condition="$([System.String]::Copy('%(Filename)').Contains('msalruntime'))" />
     </ItemGroup>
   </Target>
+  <!-- aspnetcorev2_inprocess.dll is the ASP.NET Core IIS in-process hosting module. sbridge serves Streamable HTTP on Kestrel only
+       and is never hosted by IIS, so the module is never loaded. Leaving it out keeps the Windows publish output a single file. -->
+  <Target Name="ExcludeIisInProcessNative" AfterTargets="ComputeResolvedFilesToPublishList">
+    <ItemGroup>
+      <ResolvedFileToPublish Remove="@(ResolvedFileToPublish)" Condition="'%(Filename)%(Extension)' == 'aspnetcorev2_inprocess.dll'" />
+    </ItemGroup>
+  </Target>
+  <!-- msasxpress.dll (XPRESS compression, shipped by the ADOMD.NET package for win-x64) may be loaded by the XMLA client at run time,
+       so it is kept: on Windows, embed native libraries in the single file and extract them on first run. Linux and macOS are unchanged. -->
+  <PropertyGroup Condition="$(RuntimeIdentifier.StartsWith('win-'))">
+    <IncludeNativeLibrariesForSelfExtract>true</IncludeNativeLibrariesForSelfExtract>
+  </PropertyGroup>
   <ItemGroup>
     <None Include="..\..\README.md;..\..\LICENSE;..\..\THIRD-PARTY-NOTICES.md" Pack="true" PackagePath="" Visible="false" />
     <None Include="..\..\licenses\*" Pack="true" PackagePath="licenses\" Visible="false" />
