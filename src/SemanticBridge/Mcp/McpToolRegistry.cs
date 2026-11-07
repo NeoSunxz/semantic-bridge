@@ -25,10 +25,13 @@ public static class McpToolRegistry
         {
             list.Add(McpServerTool.Create(tools.UpdateDescription));
             list.Add(McpServerTool.Create(tools.RefreshDataset));
-            return list;
+            return Checked(list, tools);
         }
         // Over stdio a closed gate is the default and needs no comment; over HTTP the opt-in is easy to miss, so say why.
         if (gate.OverHttp && gate.ClosedReason is { } reason) log.WriteLine("mcp: write tools are not registered. " + reason);
-        return list;
+        return Checked(list, tools);
     }
+
+    private static IReadOnlyList<McpServerTool> Checked(List<McpServerTool> list, McpTools tools) =>
+        [.. list.Select(t => (McpServerTool)new ArgumentCheckedTool(t, tools.Scrubber))];
 }

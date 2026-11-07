@@ -22,6 +22,8 @@ public sealed class McpTools(BridgeService service, SecretScrubber scrubber)
     public const string TruncationNote =
         "The result is TRUNCATED: more rows exist than were returned. Do not rely on it as complete. Re-run with aggregation or filters (SUMMARIZECOLUMNS, TOPN, FILTER) instead of reading raw rows.";
 
+    internal SecretScrubber Scrubber => scrubber;
+
     [McpServerTool(Name = "list_workspaces", ReadOnly = true)]
     [Description("List the Power BI workspaces visible to the service principal (id, name, is_on_dedicated_capacity). Start here, then call list_datasets.")]
     public Task<CallToolResult> ListWorkspaces(CancellationToken ct) =>
@@ -133,7 +135,7 @@ public sealed class McpTools(BridgeService service, SecretScrubber scrubber)
         catch (Exception ex)
         {
             var message = scrubber.Scrub(ex is BridgeException ? ex.Message : $"unexpected {ex.GetType().Name}: {ex.Message}");
-            if (ErrorHints.For(message) is { } hint) message += " Hint: " + hint;
+            if (ex is not BridgeException { Kind: ErrorKind.Usage } && ErrorHints.For(message) is { } hint) message += " Hint: " + hint;
             return Error(message);
         }
     }

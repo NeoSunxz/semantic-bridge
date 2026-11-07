@@ -526,7 +526,7 @@ public sealed class CliApp
         }
         catch (BridgeException ex)
         {
-            ReportError(ex.Message);
+            ReportError(ex.Message, withHint: ex.Kind != ErrorKind.Usage);
             return ex.IsUsageError ? ExitUsage : ExitRuntime;
         }
         catch (Exception ex)
@@ -536,11 +536,12 @@ public sealed class CliApp
         }
     }
 
-    private void ReportError(string message)
+    // Usage errors are the user's own invalid input (for example the explicit --via rest refusal); infrastructure hints would mislead.
+    private void ReportError(string message, bool withHint = true)
     {
         var clean = _scrubber.Scrub(message);
         _err.WriteLine("error: " + clean);
-        if (ErrorHints.For(clean) is { } hint) _err.WriteLine("hint: " + hint);
+        if (withHint && ErrorHints.For(clean) is { } hint) _err.WriteLine("hint: " + hint);
     }
 
     private Task<int> ConfigInit(string? configOption, bool force)

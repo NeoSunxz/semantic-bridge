@@ -172,6 +172,7 @@ public sealed class CliTests : IDisposable
         Assert.Equal(2, result.Code);
         Assert.Contains("executeQueries", result.Err);
         Assert.Contains("INFO", result.Err);
+        Assert.DoesNotContain("hint:", result.Err);
     }
 
     [Fact]

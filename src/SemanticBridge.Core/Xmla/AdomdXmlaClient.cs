@@ -1,6 +1,7 @@
 using System.Data;
 using System.Diagnostics;
 using Microsoft.AnalysisServices.AdomdClient;
+using SemanticBridge.Core.Diagnostics;
 using SemanticBridge.Core.Results;
 using SemanticBridge.Core.Safety;
 
@@ -46,7 +47,7 @@ public sealed class AdomdXmlaClient(IAdomdConnectionFactory factory, SecretScrub
         {
             // INFO.* DAX functions are not available everywhere; the TMSCHEMA_* schema rowsets carry the same data.
             warnings.Clear();
-            warnings.Add("INFO.* functions failed (" + ex.Message + "); metadata was read from TMSCHEMA_* rowsets instead.");
+            warnings.Add(InfoFallbackWarning(ex.Message));
             tables = Rowset(connection, "TMSCHEMA_TABLES", warnings, ct);
             columns = Rowset(connection, "TMSCHEMA_COLUMNS", warnings, ct);
             measures = Rowset(connection, "TMSCHEMA_MEASURES", warnings, ct);
@@ -54,6 +55,9 @@ public sealed class AdomdXmlaClient(IAdomdConnectionFactory factory, SecretScrub
         }
         return SchemaBuilder.Build(tables, columns, measures, relationships, tableFilter, sw.ElapsedMilliseconds, warnings);
     }
+
+    internal string InfoFallbackWarning(string engineMessage) =>
+        "INFO.* functions failed (" + scrubber.Scrub(EngineMessage.Clean(engineMessage)) + "); metadata was read from TMSCHEMA_* rowsets instead.";
 
     private IReadOnlyList<MetaRow> Info(AdomdConnection connection, string function, List<string> warnings, Stopwatch sw, CancellationToken ct)
     {
@@ -72,7 +76,7 @@ public sealed class AdomdXmlaClient(IAdomdConnectionFactory factory, SecretScrub
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
-            throw new BridgeException(ErrorKind.Xmla, $"Reading {name} failed: " + scrubber.Scrub(ex.Message));
+            throw new BridgeException(ErrorKind.Xmla, $"Reading {name} failed: " + scrubber.Scrub(EngineMessage.Clean(ex.Message)));
         }
     }
 
@@ -135,7 +139,7 @@ public sealed class AdomdXmlaClient(IAdomdConnectionFactory factory, SecretScrub
         {
             if (ct.IsCancellationRequested) throw new OperationCanceledException(ct);
             var kind = ex is AdomdErrorResponseException ? ErrorKind.Dax : ErrorKind.Xmla;
-            throw new BridgeException(kind, scrubber.Scrub(ex.Message));
+            throw new BridgeException(kind, scrubber.Scrub(EngineMessage.Clean(ex.Message)));
         }
     }
 

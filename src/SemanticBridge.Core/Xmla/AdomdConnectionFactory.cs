@@ -1,6 +1,7 @@
 using Microsoft.AnalysisServices.AdomdClient;
 using SemanticBridge.Core.Auth;
 using SemanticBridge.Core.Config;
+using SemanticBridge.Core.Diagnostics;
 using SemanticBridge.Core.Safety;
 
 namespace SemanticBridge.Core.Xmla;
@@ -42,7 +43,7 @@ public sealed class TokenAdomdConnectionFactory(ResolvedConfig config, ITokenPro
         catch (Exception ex)
         {
             connection.Dispose();
-            throw new BridgeException(ErrorKind.Xmla, "XMLA connection failed: " + scrubber.Scrub(ex.Message));
+            throw new BridgeException(ErrorKind.Xmla, "XMLA connection failed: " + scrubber.Scrub(EngineMessage.Clean(ex.Message)));
         }
     }
 

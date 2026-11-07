@@ -1,19 +1,24 @@
 using Microsoft.AnalysisServices.Tabular;
 using SemanticBridge.Core.Auth;
 using SemanticBridge.Core.Config;
+using SemanticBridge.Core.Diagnostics;
 using SemanticBridge.Core.Safety;
 
 namespace SemanticBridge.Core.Xmla;
 
 /// <summary>Description reads and writes through TOM against the workspace's XMLA read-write endpoint.</summary>
-public sealed class TomDescriptionWriter(ResolvedConfig config, ITokenProvider tokens, SecretScrubber scrubber) : IDescriptionWriter
+public sealed class TomDescriptionWriter(ResolvedConfig config, ITokenProvider tokens, SecretScrubber scrubber, TimeSpan? lookupRetryDelay = null) : IDescriptionWriter
 {
+    /// <summary>Wait before the single retry when the database list misses right after a save (it can be briefly stale).</summary>
+    private readonly TimeSpan _lookupRetryDelay = lookupRetryDelay ?? TimeSpan.FromSeconds(2);
+
     public async Task<IReadOnlyList<ModelObjectInfo>> ListAsync(string workspace, string dataset, CancellationToken ct)
     {
-        using var server = await ConnectAsync(workspace, ct).ConfigureAwait(false);
+        var (server, database) = await ConnectToDatabaseAsync(workspace, dataset, ct).ConfigureAwait(false);
+        using var _ = server;
         return await Task.Run(() => Guard(() =>
         {
-            var model = FindDatabase(server, dataset).Model;
+            var model = database.Model;
             var list = new List<ModelObjectInfo>();
             foreach (var table in model.Tables)
             {
@@ -29,10 +34,11 @@ public sealed class TomDescriptionWriter(ResolvedConfig config, ITokenProvider t
 
     async Task IDescriptionWriter.ApplyAsync(string workspace, string dataset, IReadOnlyList<DescriptionChange> changes, CancellationToken ct)
     {
-        using var server = await ConnectAsync(workspace, ct).ConfigureAwait(false);
+        var (server, database) = await ConnectToDatabaseAsync(workspace, dataset, ct).ConfigureAwait(false);
+        using var _ = server;
         await Task.Run(() => Guard(() =>
         {
-            var model = FindDatabase(server, dataset).Model;
+            var model = database.Model;
             foreach (var change in changes)
             {
                 var table = model.Tables.Find(change.Table) ?? throw new BridgeException(ErrorKind.NotFound, $"Table '{change.Table}' no longer exists in the model.");
@@ -56,9 +62,35 @@ public sealed class TomDescriptionWriter(ResolvedConfig config, ITokenProvider t
 
     private static BridgeException Gone(DescriptionChange c) => new(ErrorKind.NotFound, $"{c.Display} no longer exists in the model.");
 
-    private static Database FindDatabase(Server server, string dataset) =>
-        server.Databases.FindByName(dataset)
-        ?? throw new BridgeException(ErrorKind.NotFound, $"Dataset '{dataset}' was not found on the XMLA endpoint of this workspace.");
+    private static BridgeException DatasetNotFound(string dataset) =>
+        new(ErrorKind.NotFound, $"Dataset '{dataset}' was not found on the XMLA endpoint of this workspace.");
+
+    /// <summary>Connects and finds the database; one miss is retried on a fresh connection, because the list can be briefly stale after a TOM save.</summary>
+    private Task<(Server Server, Database Database)> ConnectToDatabaseAsync(string workspace, string dataset, CancellationToken ct) =>
+        FindWithRetryAsync(async () =>
+        {
+            var server = await ConnectAsync(workspace, ct).ConfigureAwait(false);
+            try
+            {
+                var database = await Task.Run(() => Guard(() => server.Databases.FindByName(dataset)), ct).ConfigureAwait(false);
+                if (database is not null) return ((Server, Database)?)(server, database);
+            }
+            catch
+            {
+                server.Dispose();
+                throw;
+            }
+            server.Dispose();
+            return null;
+        }, _lookupRetryDelay, () => DatasetNotFound(dataset), ct);
+
+    /// <summary>Runs <paramref name="attempt"/>; on a miss (null) waits <paramref name="delay"/> and tries exactly once more, then throws <paramref name="notFound"/>.</summary>
+    internal static async Task<T> FindWithRetryAsync<T>(Func<Task<T?>> attempt, TimeSpan delay, Func<BridgeException> notFound, CancellationToken ct) where T : struct
+    {
+        if (await attempt().ConfigureAwait(false) is { } first) return first;
+        await Task.Delay(delay, ct).ConfigureAwait(false);
+        return await attempt().ConfigureAwait(false) ?? throw notFound();
+    }
 
     /// <summary>
     /// The one place that decides how TOM authenticates. Currently the MSAL token (no secret in the connection string).
@@ -89,7 +121,7 @@ public sealed class TomDescriptionWriter(ResolvedConfig config, ITokenProvider t
         catch (Exception ex)
         {
             server.Dispose();
-            throw new BridgeException(ErrorKind.Xmla, MapError("XMLA connection failed: " + scrubber.Scrub(ex.Message)));
+            throw new BridgeException(ErrorKind.Xmla, MapError("XMLA connection failed: " + scrubber.Scrub(EngineMessage.Clean(ex.Message))));
         }
     }
 
@@ -99,7 +131,7 @@ public sealed class TomDescriptionWriter(ResolvedConfig config, ITokenProvider t
         catch (BridgeException) { throw; }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
-            throw new BridgeException(ErrorKind.Xmla, MapError(scrubber.Scrub(ex.Message)));
+            throw new BridgeException(ErrorKind.Xmla, MapError(scrubber.Scrub(EngineMessage.Clean(ex.Message))));
         }
     }
 
