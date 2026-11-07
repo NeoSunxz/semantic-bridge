@@ -6,7 +6,7 @@ Semantic Bridge for Power BI is a command-line tool (`sbridge`) and an MCP serve
 
 Not affiliated with or endorsed by Microsoft. Power BI is a trademark of Microsoft.
 
-> **Status: pre-release.** Phases 1–5 of the [v1 plan](docs/superpowers/plans/2026-11-04-v1-plan.md) are implemented. Nothing has been released yet. Live verification so far covers linux-x64 against a China (21Vianet) tenant only; the global cloud has not been verified live. See [Status and platforms](#status-and-platforms).
+> **Status: v0.1.0, the first release.** Phases 1–5 of the [v1 plan](docs/superpowers/plans/2026-11-04-v1-plan.md) are implemented. Live verification so far covers linux-x64 against a China (21Vianet) tenant only; the global cloud has not been verified live. See [Status and platforms](#status-and-platforms).
 
 ## What it is and what it is not
 
@@ -39,7 +39,7 @@ The differences this project is built around are: presets for the global and Chi
 
 ## Status and platforms
 
-- Phases 1–5 are implemented. The first release is pending.
+- Phases 1–5 are implemented and released as v0.1.0 (GitHub Releases and the GHCR image).
 - Verified live on 2026-11-07 on linux-x64 against a China (21Vianet) Premium Per User (PPU) workspace: XMLA (token auth with an MSAL access token), REST, schema, queries, refresh, refresh status, description writes, MCP over stdio and HTTP, and the single-file linux-x64 binary.
 - The global cloud has not been verified live. Pro (REST-only) workspaces have not been tested against a live tenant.
 - XMLA is unverified on the other RIDs: `linux-arm64`, `win-x64`, `win-arm64`, `osx-arm64` and `osx-x64`.
@@ -49,7 +49,7 @@ The differences this project is built around are: presets for the global and Chi
 
 ### Release binaries
 
-Download the archive for your platform from the [GitHub Releases](https://github.com/NeoSunxz/semantic-bridge/releases) page. Each archive contains one file: `sbridge`, or `sbridge.exe` on Windows. The binaries are self-contained, so you do not need .NET installed. Check the archive against `SHA256SUMS` before you run it. The release workflow does not sign the binaries, so the operating system may warn when you first run them.
+Download the archive for your platform from the [GitHub Releases](https://github.com/NeoSunxz/semantic-bridge/releases) page. Each archive contains the program as a single file (`sbridge`, or `sbridge.exe` on Windows) plus the licence files (`LICENSE`, `licenses/` and `THIRD-PARTY-NOTICES.md`). The binaries are self-contained, so you do not need .NET installed. Check the archive against `SHA256SUMS` before you run it. The release workflow does not sign the binaries, so the operating system may warn when you first run them.
 
 ### .NET tool
 
@@ -66,7 +66,7 @@ docker pull ghcr.io/neosunxz/semantic-bridge:latest
 docker pull neosunxz/semantic-bridge:latest
 ```
 
-The Docker Hub image is pushed only when the Docker Hub secrets are configured. Images are built for `linux/amd64` and `linux/arm64`. Version tags and `latest` are created for release tags. See [Docker and HTTP transport](#docker-and-http-transport).
+The Docker Hub image is pushed only when the Docker Hub secrets are configured, so for now only the GHCR image is published. Images are built for `linux/amd64` and `linux/arm64`. Version tags and `latest` are created for release tags. See [Docker and HTTP transport](#docker-and-http-transport).
 
 ## Setup
 
