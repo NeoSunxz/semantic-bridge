@@ -7,7 +7,7 @@ public static class ConfigTemplate
         #
         # Precedence, highest first: command-line flag > environment variable > this file > cloud preset.
         # Environment variables: SBRIDGE_CONFIG, SBRIDGE_PROFILE, SBRIDGE_TENANT_ID, SBRIDGE_CLIENT_ID,
-        # SBRIDGE_CLIENT_SECRET, SBRIDGE_CLOUD. If the config file has no profiles, SBRIDGE_TENANT_ID,
+        # SBRIDGE_CLIENT_SECRET, SBRIDGE_CLOUD, SBRIDGE_WORKSPACE, SBRIDGE_DATASET. If the config file has no profiles, SBRIDGE_TENANT_ID,
         # SBRIDGE_CLIENT_ID and SBRIDGE_CLIENT_SECRET (plus optional SBRIDGE_CLOUD) are enough (env-only setup).
         #
         # WARNING: write capabilities (allow_write: true: description updates, dataset refresh) change the
@@ -40,6 +40,8 @@ public static class ConfigTemplate
 
             # Workspace name or ID used when -w is not given.
             # default_workspace: My Workspace
+            # Dataset name or ID used when -d is not given.
+            # default_dataset: Sales
 
             # Writes are off unless this is true. See the warning at the top of this file.
             allow_write: false

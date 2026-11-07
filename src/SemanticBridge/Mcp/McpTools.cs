@@ -39,7 +39,7 @@ public sealed class McpTools(BridgeService service, SecretScrubber scrubber)
     [McpServerTool(Name = "get_model_schema", ReadOnly = true)]
     [Description("Get a model's tables, columns, measures (with their DAX) and relationships. Read it before writing DAX so names are exact: Table[Column], [Measure]. Needs the XMLA endpoint (Premium/PPU/Fabric workspaces). Then call run_dax.")]
     public Task<CallToolResult> GetModelSchema(
-        [Description("Dataset name or ID.")] string dataset,
+        [Description("Dataset name or ID. Optional when the profile has a default dataset.")] string? dataset = null,
         [Description("Workspace name or ID. Optional when the profile has a default workspace.")] string? workspace = null,
         [Description("Only this table (and its relationships). Use it on large models.")] string? table = null,
         CancellationToken ct = default) =>
@@ -48,8 +48,8 @@ public sealed class McpTools(BridgeService service, SecretScrubber scrubber)
     [McpServerTool(Name = "run_dax", ReadOnly = true)]
     [Description("Run a read-only DAX query (EVALUATE, optionally with DEFINE) against a dataset. Get the schema first so table/column/measure names are exact. Prefer aggregations (SUMMARIZECOLUMNS, TOPN) over raw rows. Column names are returned as the engine reports them. If truncated=true the result is incomplete: aggregate or filter and rerun. Check `warnings` (e.g. max_rows capped). Only DAX, not SQL or MDX.")]
     public Task<CallToolResult> RunDax(
-        [Description("Dataset name or ID.")] string dataset,
         [Description("The DAX query, starting with EVALUATE or DEFINE.")] string dax,
+        [Description("Dataset name or ID. Optional when the profile has a default dataset.")] string? dataset = null,
         [Description("Workspace name or ID. Optional when the profile has a default workspace.")] string? workspace = null,
         [Description("Row limit for this query. Defaults to the profile's max_rows and is capped by its ceiling (reported in warnings).")] int? max_rows = null,
         [Description("Path: auto (default), xmla or rest. auto uses XMLA and uses REST only for workspaces without an XMLA endpoint.")] string? via = null,
@@ -64,12 +64,13 @@ public sealed class McpTools(BridgeService service, SecretScrubber scrubber)
     [McpServerTool(Name = "get_refresh_status", ReadOnly = true)]
     [Description("Get a dataset's recent refresh history (newest first): request_id, refresh_type, status (Completed, Failed, Unknown = still running, ...), start/end time and the error if it failed. Use it after refresh_dataset.")]
     public Task<CallToolResult> GetRefreshStatus(
-        [Description("Dataset name or ID.")] string dataset,
+        [Description("Dataset name or ID. Optional when the profile has a default dataset.")] string? dataset = null,
         [Description("Workspace name or ID. Optional when the profile has a default workspace.")] string? workspace = null,
         [Description("How many entries to return (1-100, default 5).")] int? top = null,
         CancellationToken ct = default) =>
         Run(async () => JsonOutput.Serialize(await service.GetRefreshStatusAsync(workspace, dataset, top, ct).ConfigureAwait(false)), ct);
 
+    // Write tools keep `dataset` required on purpose: an agent must never write to a default dataset implicitly.
     [McpServerTool(Name = "update_description", ReadOnly = false, Destructive = true, Idempotent = true)]
     [Description("WRITE: change the description of a table, column or measure on the LIVE model; it affects every report built on it and takes effect immediately. "
         + "Before calling, show the user the target and the new text and get their explicit confirmation; never call it on your own initiative. "

@@ -1,3 +1,4 @@
+using SemanticBridge.Core.Safety;
 namespace SemanticBridge.Core.Config;
 
 public enum QueryVia
@@ -27,6 +28,7 @@ public sealed class ResolvedConfig
     public string? ClientSecret { get; init; }
     public required CloudEndpoints Endpoints { get; init; }
     public string? DefaultWorkspace { get; init; }
+    public string? DefaultDataset { get; init; }
     public bool AllowWrite { get; init; }
     public int MaxRows { get; init; } = DefaultMaxRows;
     public int MaxRowsCeiling { get; init; } = DefaultMaxRowsCeiling;
@@ -35,6 +37,15 @@ public sealed class ResolvedConfig
 
     /// <summary>Config key to a human-readable origin such as "env SBRIDGE_TENANT_ID" or "preset china".</summary>
     public IReadOnlyDictionary<string, string> Sources { get; init; } = new Dictionary<string, string>();
+
+    /// <summary>Returns the given dataset, or default_dataset when none is given; a usage error if neither is set.</summary>
+    public string ResolveDatasetInput(string? dataset)
+    {
+        var input = !string.IsNullOrWhiteSpace(dataset) ? dataset : DefaultDataset;
+        if (string.IsNullOrWhiteSpace(input))
+            throw new BridgeException(ErrorKind.Usage, "No dataset given: pass -d or set default_dataset (or SBRIDGE_DATASET).");
+        return input;
+    }
 
     /// <summary>Throws a config error listing every credential that is still missing.</summary>
     public void RequireCredentials()

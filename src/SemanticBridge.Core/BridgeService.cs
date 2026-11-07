@@ -46,7 +46,7 @@ public sealed class BridgeService(ResolvedConfig config, PowerBiRestClient rest,
         return new ResolvedWorkspace(ws, duplicate ? $"{ws.Name} - {ws.Id}" : ws.Name);
     }
 
-    public async Task<ModelSchema> GetSchemaAsync(string? workspace, string dataset, string? tableFilter, QueryVia? via, CancellationToken ct)
+    public async Task<ModelSchema> GetSchemaAsync(string? workspace, string? dataset, string? tableFilter, QueryVia? via, CancellationToken ct)
     {
         // Only an explicit --via rest is a usage error; a config default of rest still reads metadata over XMLA.
         if (via == QueryVia.Rest)
@@ -63,7 +63,7 @@ public sealed class BridgeService(ResolvedConfig config, PowerBiRestClient rest,
     private const string RestSchemaUnsupported =
         "Model metadata needs the XMLA endpoint (Premium, PPU, Embedded or Fabric capacity): per the Power BI REST docs (Datasets - Execute Queries), INFO functions are not supported by executeQueries.";
 
-    public async Task<QueryResult> QueryAsync(string? workspace, string dataset, string dax, int? requestedMaxRows, QueryVia? via, CancellationToken ct)
+    public async Task<QueryResult> QueryAsync(string? workspace, string? dataset, string dax, int? requestedMaxRows, QueryVia? via, CancellationToken ct)
     {
         DaxGuard.Validate(dax);
         var (maxRows, warnings) = EffectiveMaxRows(requestedMaxRows);
@@ -97,18 +97,19 @@ public sealed class BridgeService(ResolvedConfig config, PowerBiRestClient rest,
         return (requested.Value, warnings);
     }
 
-    private async Task<(ResolvedWorkspace Workspace, Dataset Dataset)> ResolveAsync(string? workspace, string dataset, CancellationToken ct)
+    private async Task<(ResolvedWorkspace Workspace, Dataset Dataset)> ResolveAsync(string? workspace, string? dataset, CancellationToken ct)
     {
+        var input = config.ResolveDatasetInput(dataset);
         var ws = await ResolveWorkspaceAsync(workspace, ct).ConfigureAwait(false);
         var datasets = await rest.GetDatasetsAsync(ws.Workspace.Id, ct).ConfigureAwait(false);
-        var ds = NameResolver.Resolve(datasets, dataset, "Dataset", d => d.Id, d => d.Name);
+        var ds = NameResolver.Resolve(datasets, input, "Dataset", d => d.Id, d => d.Name);
         return (ws, ds);
     }
 
     // ---- writes (all gated) ------------------------------------------------
 
     /// <summary>Reads current descriptions and builds the old-to-new change list. Changes nothing.</summary>
-    public async Task<DescriptionPlan> PlanDescriptionsAsync(string? workspace, string dataset, IReadOnlyList<DescriptionUpdate> updates, CancellationToken ct)
+    public async Task<DescriptionPlan> PlanDescriptionsAsync(string? workspace, string? dataset, IReadOnlyList<DescriptionUpdate> updates, CancellationToken ct)
     {
         _gate.EnsureOpen();
         if (updates.Count == 0) throw new BridgeException(ErrorKind.Usage, "Nothing to update: no targets given.");
@@ -131,7 +132,7 @@ public sealed class BridgeService(ResolvedConfig config, PowerBiRestClient rest,
     }
 
     /// <summary>Plan and apply in one call, for callers that confirm elsewhere (MCP: the agent asks the user first).</summary>
-    public async Task<DescriptionPlan> UpdateDescriptionsAsync(string? workspace, string dataset, IReadOnlyList<DescriptionUpdate> updates, CancellationToken ct)
+    public async Task<DescriptionPlan> UpdateDescriptionsAsync(string? workspace, string? dataset, IReadOnlyList<DescriptionUpdate> updates, CancellationToken ct)
     {
         var plan = await PlanDescriptionsAsync(workspace, dataset, updates, ct).ConfigureAwait(false);
         await ApplyDescriptionsAsync(plan, ct).ConfigureAwait(false);
@@ -142,7 +143,7 @@ public sealed class BridgeService(ResolvedConfig config, PowerBiRestClient rest,
     /// Queues a refresh. With <paramref name="trackForWait"/> the refresh history is read first, so a later
     /// <see cref="WaitForRefreshAsync"/> can tell this run from earlier ones when the service returns no request ID.
     /// </summary>
-    public async Task<RefreshTrigger> RefreshAsync(string? workspace, string dataset, CancellationToken ct, bool trackForWait = false)
+    public async Task<RefreshTrigger> RefreshAsync(string? workspace, string? dataset, CancellationToken ct, bool trackForWait = false)
     {
         _gate.EnsureOpen();
         var (ws, ds) = await ResolveAsync(workspace, dataset, ct).ConfigureAwait(false);
@@ -158,7 +159,7 @@ public sealed class BridgeService(ResolvedConfig config, PowerBiRestClient rest,
     }
 
     /// <summary>Refresh history, newest first. A read: not gated.</summary>
-    public async Task<IReadOnlyList<RefreshEntry>> GetRefreshStatusAsync(string? workspace, string dataset, int? top, CancellationToken ct)
+    public async Task<IReadOnlyList<RefreshEntry>> GetRefreshStatusAsync(string? workspace, string? dataset, int? top, CancellationToken ct)
     {
         var count = top ?? 5;
         if (count is < 1 or > MaxRefreshHistory) throw new BridgeException(ErrorKind.Usage, $"top must be between 1 and {MaxRefreshHistory}.");

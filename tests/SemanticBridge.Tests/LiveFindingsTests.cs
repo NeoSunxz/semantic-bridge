@@ -155,7 +155,7 @@ public sealed class McpArgumentValidationTests
         var text = Text(result);
         Assert.Contains("Missing required argument(s): dax.", text);
         Assert.Contains("Unknown argument(s): query.", text);
-        Assert.Contains("Expected arguments: dataset, dax, workspace, max_rows, via.", text);
+        Assert.Contains("Expected arguments: dax, dataset, workspace, max_rows, via.", text);
         Assert.DoesNotContain("secret-looking-value", text);
         Assert.Equal(0, xmla.QueryCalls);
     }

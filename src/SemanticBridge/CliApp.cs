@@ -82,7 +82,7 @@ public sealed class CliApp
 
     private static Option<string?> WorkspaceOption() => new("--workspace", "-w") { Description = "Workspace name or ID (default: default_workspace)." };
 
-    private static Option<string> DatasetOption() => new("--dataset", "-d") { Description = "Dataset name or ID.", Required = true };
+    private static Option<string?> DatasetOption() => new("--dataset", "-d") { Description = "Dataset name or ID (default: default_dataset)." };
 
     private static Option<string> FormatOption(params string[] allowed)
     {
@@ -179,7 +179,7 @@ public sealed class CliApp
             var cfg = LoadConfig(pr);
             var viaValue = pr.GetValue(via) is { } v ? ConfigLoader.ParseVia(v, "--via") : (QueryVia?)null;
             using var rt = CreateRuntime(cfg);
-            var schema = await rt.Service.GetSchemaAsync(pr.GetValue(ws), pr.GetValue(ds)!, pr.GetValue(table), viaValue, ct).ConfigureAwait(false);
+            var schema = await rt.Service.GetSchemaAsync(pr.GetValue(ws), pr.GetValue(ds), pr.GetValue(table), viaValue, ct).ConfigureAwait(false);
             if (pr.GetValue(format) == "json") _out.WriteLine(JsonOutput.Serialize(schema));
             else
             {
@@ -210,7 +210,7 @@ public sealed class CliApp
             var text = ReadQueryText(pr.GetValue(dax), pr.GetValue(file));
             var viaValue = pr.GetValue(via) is { } v ? ConfigLoader.ParseVia(v, "--via") : (QueryVia?)null;
             using var rt = CreateRuntime(cfg);
-            var result = await rt.Service.QueryAsync(pr.GetValue(ws), pr.GetValue(ds)!, text, pr.GetValue(maxRows), viaValue, ct).ConfigureAwait(false);
+            var result = await rt.Service.QueryAsync(pr.GetValue(ws), pr.GetValue(ds), text, pr.GetValue(maxRows), viaValue, ct).ConfigureAwait(false);
             WriteQueryResult(pr.GetValue(format)!, result);
             return ExitOk;
         }));
@@ -241,7 +241,7 @@ public sealed class CliApp
             RequireConfirmable(assumeYes);
 
             using var rt = OpenService(cfg, gate);
-            var plan = await rt.Service.PlanDescriptionsAsync(pr.GetValue(ws), pr.GetValue(ds)!, updates, ct).ConfigureAwait(false);
+            var plan = await rt.Service.PlanDescriptionsAsync(pr.GetValue(ws), pr.GetValue(ds), updates, ct).ConfigureAwait(false);
             foreach (var u in plan.Unchanged) _err.WriteLine($"unchanged: {u.Display} already has this description.");
             var applied = false;
             if (plan.Changes.Count == 0) _err.WriteLine("No changes to apply.");
@@ -288,14 +288,15 @@ public sealed class CliApp
             gate.EnsureOpen();
             var assumeYes = pr.GetValue(yes);
             RequireConfirmable(assumeYes);
-            if (!assumeYes && !Confirm($"Refresh dataset '{pr.GetValue(ds)}' now? This uses capacity and changes the data every report shows."))
+            var datasetInput = cfg.ResolveDatasetInput(pr.GetValue(ds));
+            if (!assumeYes && !Confirm($"Refresh dataset '{datasetInput}' now? This uses capacity and changes the data every report shows."))
             {
                 _err.WriteLine("aborted: no refresh was started.");
                 return ExitRuntime;
             }
 
             using var rt = OpenService(cfg, gate);
-            var trigger = await rt.Service.RefreshAsync(pr.GetValue(ws), pr.GetValue(ds)!, ct, trackForWait: pr.GetValue(wait)).ConfigureAwait(false);
+            var trigger = await rt.Service.RefreshAsync(pr.GetValue(ws), pr.GetValue(ds), ct, trackForWait: pr.GetValue(wait)).ConfigureAwait(false);
             _out.WriteLine("accepted: true");
             _out.WriteLine($"workspace: {trigger.WorkspaceName}");
             _out.WriteLine($"dataset: {trigger.DatasetName}");
@@ -338,7 +339,7 @@ public sealed class CliApp
         cmd.SetAction((pr, ct) => Run(async () =>
         {
             using var rt = OpenService(LoadConfig(pr), null);
-            var items = await rt.Service.GetRefreshStatusAsync(pr.GetValue(ws), pr.GetValue(ds)!, pr.GetValue(top), ct).ConfigureAwait(false);
+            var items = await rt.Service.GetRefreshStatusAsync(pr.GetValue(ws), pr.GetValue(ds), pr.GetValue(top), ct).ConfigureAwait(false);
             WriteList(pr.GetValue(format)!, items, ["request_id", "refresh_type", "status", "start_time", "end_time", "error"],
                 items.Select(r => new object?[] { r.RequestId, r.RefreshType, r.Status, r.StartTime, r.EndTime, r.Error }).ToList());
             return ExitOk;

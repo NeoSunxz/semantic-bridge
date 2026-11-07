@@ -129,6 +129,20 @@ public sealed class CliTests : IDisposable
     }
 
     [Fact]
+    public async Task ConfigShowListsTheDefaultWorkspaceAndDatasetWithSources()
+    {
+        var path = Path.Combine(_dir, "config.yaml");
+        File.WriteAllText(path, "profiles:\n  p:\n    tenant_id: t\n    client_id: c\n    default_workspace: FileWs\n");
+        var shown = await Run(["config", "show", "--config", path], (ConfigLoader.EnvWorkspace, "EnvWs"), (ConfigLoader.EnvDataset, "EnvDs"));
+        Assert.Equal(0, shown.Code);
+        Assert.Matches(@"default_workspace\s+EnvWs\s+\[env SBRIDGE_WORKSPACE\]", shown.Out);
+        Assert.Matches(@"default_dataset\s+EnvDs\s+\[env SBRIDGE_DATASET\]", shown.Out);
+        var plain = await Run(["config", "show", "--config", path]);
+        Assert.Matches(@"default_workspace\s+FileWs\s+\[file, profile 'p'\]", plain.Out);
+        Assert.Matches(@"default_dataset\s+\(not set\)\s+\[not set\]", plain.Out);
+    }
+
+    [Fact]
     public async Task MissingCredentialsIsAUsageErrorWithoutSecrets()
     {
         var result = await Run(["workspaces"], (ConfigLoader.EnvTenantId, "t"), (ConfigLoader.EnvClientId, "c"));

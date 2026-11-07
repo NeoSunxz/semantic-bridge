@@ -56,7 +56,7 @@ internal static class TestData
     public const string WorkspaceId = "11111111-1111-1111-1111-111111111111";
     public const string DatasetId = "22222222-2222-2222-2222-222222222222";
 
-    public static ResolvedConfig Config(QueryVia via = QueryVia.Auto, int maxRows = 1000, int ceiling = 100_000, string? defaultWorkspace = null) => new()
+    public static ResolvedConfig Config(QueryVia via = QueryVia.Auto, int maxRows = 1000, int ceiling = 100_000, string? defaultWorkspace = null, string? defaultDataset = null) => new()
     {
         ProfileName = "test",
         ProfileSource = "test",
@@ -69,6 +69,7 @@ internal static class TestData
         MaxRowsCeiling = ceiling,
         DefaultVia = via,
         DefaultWorkspace = defaultWorkspace,
+        DefaultDataset = defaultDataset,
     };
 
     public static QueryResult Xmla(int rows = 1) => new()

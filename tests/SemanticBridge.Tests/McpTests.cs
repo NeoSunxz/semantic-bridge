@@ -23,7 +23,7 @@ public sealed class McpToolTests
         Assert.All(listed, t => Assert.False(string.IsNullOrWhiteSpace(t.Description)));
         var runDax = listed.Single(t => t.Name == "run_dax");
         var required = runDax.JsonSchema.GetProperty("required").EnumerateArray().Select(e => e.GetString()).ToArray();
-        Assert.Contains("dataset", required);
+        Assert.DoesNotContain("dataset", required);
         Assert.Contains("dax", required);
         Assert.DoesNotContain("workspace", required);
     }

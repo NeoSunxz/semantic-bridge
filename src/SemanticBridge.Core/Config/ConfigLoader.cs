@@ -23,6 +23,8 @@ public static partial class ConfigLoader
     public const string EnvClientId = "SBRIDGE_CLIENT_ID";
     public const string EnvClientSecret = "SBRIDGE_CLIENT_SECRET";
     public const string EnvCloud = "SBRIDGE_CLOUD";
+    public const string EnvWorkspace = "SBRIDGE_WORKSPACE";
+    public const string EnvDataset = "SBRIDGE_DATASET";
     public const string EnvOnlyProfileName = "(env)";
 
     public static string DefaultConfigPath(Func<string, string?> getEnv)
@@ -160,9 +162,16 @@ public static partial class ConfigLoader
         }
 
         // 5. Behaviour and limits.
-        string? workspace = null;
-        if (!string.IsNullOrWhiteSpace(section.DefaultWorkspace)) { workspace = section.DefaultWorkspace.Trim(); sources["default_workspace"] = fileSource; }
-        else sources["default_workspace"] = "not set";
+        var workspace = DefaultName("default_workspace", EnvWorkspace, section.DefaultWorkspace);
+        var dataset = DefaultName("default_dataset", EnvDataset, section.DefaultDataset);
+
+        string? DefaultName(string key, string envName, string? fileValue)
+        {
+            if (E(envName) is { } fromEnv) { sources[key] = $"env {envName}"; return fromEnv; }
+            if (!string.IsNullOrWhiteSpace(fileValue)) { sources[key] = fileSource; return fileValue.Trim(); }
+            sources[key] = "not set";
+            return null;
+        }
 
         var allowWrite = section.AllowWrite ?? false;
         sources["allow_write"] = section.AllowWrite is null ? "default" : fileSource;
@@ -205,6 +214,7 @@ public static partial class ConfigLoader
             ClientSecret = secret,
             Endpoints = new CloudEndpoints(authority!, scope!, rest!, xmla),
             DefaultWorkspace = workspace,
+            DefaultDataset = dataset,
             AllowWrite = allowWrite,
             MaxRows = maxRows,
             MaxRowsCeiling = ceiling,

@@ -135,7 +135,7 @@ Pro 工作区没有 XMLA 端点。`query` 和 `refresh` 在那里通过 REST 可
 2. `SBRIDGE_PROFILE`
 3. 文件里的 `default_profile`
 4. 文件里唯一的那个档案
-5. 文件里没有档案，但设置了 `SBRIDGE_TENANT_ID`、`SBRIDGE_CLIENT_ID` 或 `SBRIDGE_CLIENT_SECRET`（纯环境变量方式，供 Docker 和 CI 使用）。三项凭据都需要。`SBRIDGE_CLOUD` 是可选的，单独设置它不会进入这种模式。
+5. 文件里没有档案，但设置了 `SBRIDGE_TENANT_ID`、`SBRIDGE_CLIENT_ID` 或 `SBRIDGE_CLIENT_SECRET`（纯环境变量方式，供 Docker 和 CI 使用）。三项凭据都需要。`SBRIDGE_CLOUD`、`SBRIDGE_WORKSPACE` 和 `SBRIDGE_DATASET` 是可选的，单独设置它们不会进入这种模式。
 
 如果文件里有多个档案又没有 `default_profile`，命令会失败。档案名匹配时不区分大小写。文件中的未知键会被拒绝。
 
@@ -156,6 +156,7 @@ Pro 工作区没有 XMLA 端点。`query` 和 `refresh` 在那里通过 REST 可
 | `rest_base_url` | 云预设 | `custom` 必填。 |
 | `xmla_base` | 云预设 | `custom` 必填。必须包含 `{workspace}`。 |
 | `default_workspace` | 无 | 名称或 ID，未给出 `-w` 或 `workspace` 时使用。 |
+| `default_dataset` | 无 | 名称或 ID，未给出 `-d` 或 `dataset` 时使用。MCP 写工具不使用它（见 MCP 服务器一节）。 |
 | `allow_write` | `false` | 写操作必须设为 `true`（见[写入风险警告](#写入风险警告)）。 |
 | `max_rows` | `1000` | 每次查询的默认行数上限。必须在 1 和 `max_rows_ceiling` 之间。 |
 | `max_rows_ceiling` | `100000` | 硬上限，范围 1 到 100000。超过它的请求会被截到上限并报告。 |
@@ -174,6 +175,8 @@ Pro 工作区没有 XMLA 端点。`query` 和 `refresh` 在那里通过 REST 可
 | `SBRIDGE_CLIENT_ID` | 覆盖 `client_id`。 |
 | `SBRIDGE_CLIENT_SECRET` | 覆盖客户端密码。 |
 | `SBRIDGE_CLOUD` | 覆盖 `cloud`。 |
+| `SBRIDGE_WORKSPACE` | 覆盖 `default_workspace`。 |
+| `SBRIDGE_DATASET` | 覆盖 `default_dataset`。 |
 | `SBRIDGE_HTTP_TOKEN` | `sbridge mcp --http` 的 Bearer 令牌。 |
 | `SBRIDGE_HTTP_NO_AUTH=1` | 等同于 `--no-auth`。 |
 | `SBRIDGE_ALLOW_HTTP_WRITE=1` | 等同于 `--allow-http-write`。 |
@@ -203,7 +206,7 @@ profiles:
 
 输出写到 stdout。诊断信息、提示和错误写到 stderr。
 
-工作区和数据集可以用名称或 ID 指定。名称匹配到多个对象时会报错并要求使用 ID。设置了 `default_workspace` 时可以省略 `-w`。
+工作区和数据集可以用名称或 ID 指定。名称匹配到多个对象时会报错并要求使用 ID。设置了 `default_workspace` 时可以省略 `-w`，设置了 `default_dataset` 时可以省略 `-d`。`describe` 和 `refresh` 也会使用默认数据集，并打印实际解析到的数据集。
 
 | 命令 | 用途 | 主要选项 |
 |---|---|---|
@@ -212,11 +215,11 @@ profiles:
 | `sbridge config test` | 检查令牌、REST，以及给出工作区时检查 XMLA。 | `-w` |
 | `sbridge workspaces` | 列出服务主体能看到的工作区（REST）。 | `-f table\|json\|csv` |
 | `sbridge datasets` | 列出工作区里的数据集（REST）。 | `-w`、`-f` |
-| `sbridge schema` | 表、列、带 DAX 的度量值和关系（仅 XMLA）。 | `-w`、`-d`（必填）、`--table`、`-f table\|json`、`--via` |
-| `sbridge query` | 执行 DAX 查询，可作为参数、用 `--file` 或从 stdin 给出。必须以 `DEFINE` 或 `EVALUATE` 开头。 | `-w`、`-d`（必填）、`--file`、`-f table\|json\|csv`、`--max-rows`、`--via` |
-| `sbridge describe`（写） | 更新线上模型中表、列或度量值的描述（XMLA）。 | `-w`、`-d`（必填）、`--table`、`--column`、`--measure`、`--file`、`-y, --yes`、`-f table\|json` |
-| `sbridge refresh`（写） | 发起数据集刷新（REST）。 | `-w`、`-d`（必填）、`--wait`、`--timeout`（默认 `600`）、`-y, --yes` |
-| `sbridge refresh-status` | 刷新历史，最新的在前（REST；不需要 `allow_write`）。 | `-w`、`-d`（必填）、`--top`（1–100，默认 `5`）、`-f` |
+| `sbridge schema` | 表、列、带 DAX 的度量值和关系（仅 XMLA）。 | `-w`、`-d`、`--table`、`-f table\|json`、`--via` |
+| `sbridge query` | 执行 DAX 查询，可作为参数、用 `--file` 或从 stdin 给出。必须以 `DEFINE` 或 `EVALUATE` 开头。 | `-w`、`-d`、`--file`、`-f table\|json\|csv`、`--max-rows`、`--via` |
+| `sbridge describe`（写） | 更新线上模型中表、列或度量值的描述（XMLA）。 | `-w`、`-d`、`--table`、`--column`、`--measure`、`--file`、`-y, --yes`、`-f table\|json` |
+| `sbridge refresh`（写） | 发起数据集刷新（REST）。 | `-w`、`-d`、`--wait`、`--timeout`（默认 `600`）、`-y, --yes` |
+| `sbridge refresh-status` | 刷新历史，最新的在前（REST；不需要 `allow_write`）。 | `-w`、`-d`、`--top`（1–100，默认 `5`）、`-f` |
 | `sbridge mcp` | 为启动时选定的档案运行 MCP 服务器。 | `--http`、`--host`（默认 `127.0.0.1`）、`--port`（默认 `8080`）、`--no-auth`、`--allow-http-write` |
 
 表格里看不出来的行为说明：
@@ -240,11 +243,13 @@ profiles:
 |---|---|---|
 | `list_workspaces` | 否 | 无 |
 | `list_datasets` | 否 | `workspace`（可选） |
-| `get_model_schema` | 否 | `dataset`、`workspace`（可选）、`table`（可选）。仅 XMLA。 |
-| `run_dax` | 否 | `dataset`、`dax`、`workspace`（可选）、`max_rows`（可选）、`via`（可选：`auto`、`xmla` 或 `rest`） |
-| `get_refresh_status` | 否 | `dataset`、`workspace`（可选）、`top`（可选，1–100，默认 5） |
+| `get_model_schema` | 否 | `dataset`（可选）、`workspace`（可选）、`table`（可选）。仅 XMLA。 |
+| `run_dax` | 否 | `dax`、`dataset`（可选）、`workspace`（可选）、`max_rows`（可选）、`via`（可选：`auto`、`xmla` 或 `rest`） |
+| `get_refresh_status` | 否 | `dataset`（可选）、`workspace`（可选）、`top`（可选，1–100，默认 5） |
 | `update_description` | 是 | `dataset`、`target_type`（`table`、`column` 或 `measure`）、`target`、`description`、`workspace`（可选） |
 | `refresh_dataset` | 是 | `dataset`、`workspace`（可选） |
+
+读取类工具在省略 `dataset` 时使用 `default_dataset`。写入类工具（`update_description`、`refresh_dataset`）始终要求给出 `dataset`，避免 AI 客户端在未明确指定时修改默认数据集。
 
 结果是 JSON 文本。`run_dax` 的结果字段与命令行 JSON 输出相同，被截断时还会带一个 `note` 字段。失败会以工具错误的形式返回，消息中已去除机密，适用时附带提示。调用时缺少参数、参数名未知或类型错误，会返回指出参数名并列出应有参数的工具错误（不会回显参数值）。
 

@@ -20,6 +20,7 @@ public sealed class ProfileSection
     public string? XmlaBase { get; set; }
     public string? TokenScope { get; set; }
     public string? DefaultWorkspace { get; set; }
+    public string? DefaultDataset { get; set; }
     public bool? AllowWrite { get; set; }
     public int? MaxRows { get; set; }
     public int? MaxRowsCeiling { get; set; }

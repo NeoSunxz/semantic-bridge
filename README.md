@@ -135,7 +135,7 @@ A file can hold several named profiles under `profiles:`. The profile is chosen 
 2. `SBRIDGE_PROFILE`
 3. `default_profile` in the file
 4. the only profile in the file
-5. no profile in the file, but `SBRIDGE_TENANT_ID`, `SBRIDGE_CLIENT_ID` or `SBRIDGE_CLIENT_SECRET` set (environment-only setup, used by Docker and CI). All three credentials are needed. `SBRIDGE_CLOUD` is optional and does not start this mode on its own.
+5. no profile in the file, but `SBRIDGE_TENANT_ID`, `SBRIDGE_CLIENT_ID` or `SBRIDGE_CLIENT_SECRET` set (environment-only setup, used by Docker and CI). All three credentials are needed. `SBRIDGE_CLOUD`, `SBRIDGE_WORKSPACE` and `SBRIDGE_DATASET` are optional and do not start this mode on their own.
 
 If the file has several profiles and no `default_profile`, the command fails. Profile names are matched without regard to case. Unknown keys in the file are rejected.
 
@@ -156,6 +156,7 @@ Keys under each profile:
 | `rest_base_url` | cloud preset | Required for `custom`. |
 | `xmla_base` | cloud preset | Required for `custom`. Must contain `{workspace}`. |
 | `default_workspace` | none | Name or ID, used when `-w` or `workspace` is not given. |
+| `default_dataset` | none | Name or ID, used when `-d` or `dataset` is not given. Not used by the MCP write tools (see [MCP server](#mcp-server)). |
 | `allow_write` | `false` | Must be `true` for writes (see [Write-risk warning](#write-risk-warning)). |
 | `max_rows` | `1000` | Default row limit per query. Must be between 1 and `max_rows_ceiling`. |
 | `max_rows_ceiling` | `100000` | Hard cap, between 1 and 100000. Requests above it are capped and reported. |
@@ -174,6 +175,8 @@ The secret is resolved in this order: `SBRIDGE_CLIENT_SECRET`, then the variable
 | `SBRIDGE_CLIENT_ID` | Overrides `client_id`. |
 | `SBRIDGE_CLIENT_SECRET` | Overrides the client secret. |
 | `SBRIDGE_CLOUD` | Overrides `cloud`. |
+| `SBRIDGE_WORKSPACE` | Overrides `default_workspace`. |
+| `SBRIDGE_DATASET` | Overrides `default_dataset`. |
 | `SBRIDGE_HTTP_TOKEN` | Bearer token for `sbridge mcp --http`. |
 | `SBRIDGE_HTTP_NO_AUTH=1` | Same as `--no-auth`. |
 | `SBRIDGE_ALLOW_HTTP_WRITE=1` | Same as `--allow-http-write`. |
@@ -203,7 +206,7 @@ Global options, accepted by every command: `--config <path>` (env `SBRIDGE_CONFI
 
 Output goes to stdout. Diagnostics, notes and errors go to stderr.
 
-Workspaces and datasets can be given by name or by ID. A name that matches more than one item is an error that asks for the ID. `-w` can be left out when `default_workspace` is set.
+Workspaces and datasets can be given by name or by ID. A name that matches more than one item is an error that asks for the ID. `-w` can be left out when `default_workspace` is set, and `-d` when `default_dataset` is set. `describe` and `refresh` also use the default dataset and print the dataset they resolved.
 
 | Command | Purpose | Key options |
 |---|---|---|
@@ -212,11 +215,11 @@ Workspaces and datasets can be given by name or by ID. A name that matches more 
 | `sbridge config test` | Check the token, REST and, when a workspace is given, XMLA. | `-w` |
 | `sbridge workspaces` | List workspaces the service principal can see (REST). | `-f table\|json\|csv` |
 | `sbridge datasets` | List datasets in a workspace (REST). | `-w`, `-f` |
-| `sbridge schema` | Tables, columns, measures with their DAX, and relationships (XMLA only). | `-w`, `-d` (required), `--table`, `-f table\|json`, `--via` |
-| `sbridge query` | Run a DAX query, given as an argument, with `--file`, or on stdin. Must start with `DEFINE` or `EVALUATE`. | `-w`, `-d` (required), `--file`, `-f table\|json\|csv`, `--max-rows`, `--via` |
-| `sbridge describe` (write) | Update descriptions of tables, columns or measures on the live model (XMLA). | `-w`, `-d` (required), `--table`, `--column`, `--measure`, `--file`, `-y, --yes`, `-f table\|json` |
-| `sbridge refresh` (write) | Queue a dataset refresh (REST). | `-w`, `-d` (required), `--wait`, `--timeout` (default `600`), `-y, --yes` |
-| `sbridge refresh-status` | Refresh history, newest first (REST; works without `allow_write`). | `-w`, `-d` (required), `--top` (1–100, default `5`), `-f` |
+| `sbridge schema` | Tables, columns, measures with their DAX, and relationships (XMLA only). | `-w`, `-d`, `--table`, `-f table\|json`, `--via` |
+| `sbridge query` | Run a DAX query, given as an argument, with `--file`, or on stdin. Must start with `DEFINE` or `EVALUATE`. | `-w`, `-d`, `--file`, `-f table\|json\|csv`, `--max-rows`, `--via` |
+| `sbridge describe` (write) | Update descriptions of tables, columns or measures on the live model (XMLA). | `-w`, `-d`, `--table`, `--column`, `--measure`, `--file`, `-y, --yes`, `-f table\|json` |
+| `sbridge refresh` (write) | Queue a dataset refresh (REST). | `-w`, `-d`, `--wait`, `--timeout` (default `600`), `-y, --yes` |
+| `sbridge refresh-status` | Refresh history, newest first (REST; works without `allow_write`). | `-w`, `-d`, `--top` (1–100, default `5`), `-f` |
 | `sbridge mcp` | Run the MCP server for the profile chosen at start. | `--http`, `--host` (default `127.0.0.1`), `--port` (default `8080`), `--no-auth`, `--allow-http-write` |
 
 Notes on behaviour that is not obvious from the table:
@@ -240,11 +243,13 @@ Read tools are always registered. Write tools are registered only when writes ar
 |---|---|---|
 | `list_workspaces` | no | none |
 | `list_datasets` | no | `workspace` (optional) |
-| `get_model_schema` | no | `dataset`, `workspace` (optional), `table` (optional). XMLA only. |
-| `run_dax` | no | `dataset`, `dax`, `workspace` (optional), `max_rows` (optional), `via` (optional: `auto`, `xmla` or `rest`) |
-| `get_refresh_status` | no | `dataset`, `workspace` (optional), `top` (optional, 1–100, default 5) |
+| `get_model_schema` | no | `dataset` (optional), `workspace` (optional), `table` (optional). XMLA only. |
+| `run_dax` | no | `dax`, `dataset` (optional), `workspace` (optional), `max_rows` (optional), `via` (optional: `auto`, `xmla` or `rest`) |
+| `get_refresh_status` | no | `dataset` (optional), `workspace` (optional), `top` (optional, 1–100, default 5) |
 | `update_description` | yes | `dataset`, `target_type` (`table`, `column` or `measure`), `target`, `description`, `workspace` (optional) |
 | `refresh_dataset` | yes | `dataset`, `workspace` (optional) |
+
+The read tools fall back to `default_dataset` when `dataset` is omitted. The write tools (`update_description`, `refresh_dataset`) always require `dataset`, so an AI client never changes a default dataset implicitly.
 
 Results are JSON text. A `run_dax` result has the same fields as the CLI JSON output, and gets a `note` field when it is truncated. Failures come back as tool errors with the message scrubbed of secrets, plus a hint where one applies. A call with missing, unknown or wrong-typed arguments fails with a tool error that names the argument(s) and lists the expected ones (never the values).
 

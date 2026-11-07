@@ -20,6 +20,7 @@ public static class ConfigRenderer
             ("rest_base_url", c.Endpoints.RestBaseUrl),
             ("xmla_base", c.Endpoints.XmlaBase),
             ("default_workspace", c.DefaultWorkspace ?? "(not set)"),
+            ("default_dataset", c.DefaultDataset ?? "(not set)"),
             ("allow_write", c.AllowWrite ? "true" : "false"),
             ("max_rows", c.MaxRows.ToString(System.Globalization.CultureInfo.InvariantCulture)),
             ("max_rows_ceiling", c.MaxRowsCeiling.ToString(System.Globalization.CultureInfo.InvariantCulture)),
