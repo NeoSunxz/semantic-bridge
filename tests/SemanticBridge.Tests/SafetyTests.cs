@@ -131,14 +131,24 @@ public sealed class ValueSanitizerTests
         Assert.Contains("[m]", s.Warnings[0]);
     }
 
-    [Fact]
-    public void DateTimeKeepsFullPrecisionAndInventsNoTimezone()
+    [Theory]
+    [InlineData("2024-01-02T00:00:00", "2024-01-02T00:00:00")]
+    [InlineData("2026-11-07T08:43:52.94", "2026-11-07T08:43:52.94")]
+    [InlineData("2026-11-07T08:43:54.113", "2026-11-07T08:43:54.113")]
+    public void DateTimeUsesTheRestFormat(string input, string expected)
     {
         var s = new ValueSanitizer();
-        var unspecified = new DateTime(2024, 5, 6, 7, 8, 9, DateTimeKind.Unspecified).AddTicks(1234567);
-        Assert.Equal("2024-05-06T07:08:09.1234567", s.Sanitize(unspecified, "[d]"));
-        var utc = new DateTime(2024, 5, 6, 7, 8, 9, DateTimeKind.Utc);
-        Assert.Equal("2024-05-06T07:08:09.0000000Z", s.Sanitize(utc, "[d]"));
+        var value = DateTime.ParseExact(input, ["yyyy-MM-ddTHH:mm:ss", "yyyy-MM-ddTHH:mm:ss.FFF"], System.Globalization.CultureInfo.InvariantCulture);
+        Assert.Equal(expected, s.Sanitize(value, "[d]"));
+        Assert.Equal(expected, s.Sanitize(DateTime.SpecifyKind(value, DateTimeKind.Utc), "[d]"));
+    }
+
+    [Fact]
+    public void DateTimeOffsetKeepsItsOffsetAndUsesTheSameFraction()
+    {
+        var s = new ValueSanitizer();
+        var dto = new DateTimeOffset(2026, 11, 7, 8, 43, 52, 940, TimeSpan.FromHours(8));
+        Assert.Equal("2026-11-07T08:43:52.94+08:00", s.Sanitize(dto, "[d]"));
     }
 }
 

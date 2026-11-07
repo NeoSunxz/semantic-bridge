@@ -81,6 +81,24 @@ public sealed class SchemaAndXmlaTests
     }
 
     [Fact]
+    public void AutomaticExplicitTypeFallsBackToTheInferredType()
+    {
+        IReadOnlyList<MetaRow> tables = [Row(("ID", 1L), ("Name", "Calc"))];
+        IReadOnlyList<MetaRow> columns =
+        [
+            Row(("ID", 1L), ("TableID", 1L), ("ExplicitName", "When"), ("ExplicitDataType", 1L), ("InferredDataType", 9L), ("Type", 2L)),
+            Row(("ID", 2L), ("TableID", 1L), ("ExplicitName", "Key"), ("ExplicitDataType", 0L), ("InferredDataType", 6L), ("Type", 2L)),
+            Row(("ID", 3L), ("TableID", 1L), ("ExplicitName", "Both"), ("ExplicitDataType", 1L), ("InferredDataType", 1L), ("Type", 2L)),
+            Row(("ID", 4L), ("TableID", 1L), ("ExplicitName", "Set"), ("ExplicitDataType", 2L), ("InferredDataType", 9L), ("Type", 2L)),
+        ];
+        var types = SchemaBuilder.Build(tables, columns, [], [], null, 1, []).Tables[0].Columns.ToDictionary(c => c.Name, c => c.DataType);
+        Assert.Equal("DateTime", types["When"]);
+        Assert.Equal("Int64", types["Key"]);
+        Assert.Equal("Automatic", types["Both"]);
+        Assert.Equal("String", types["Set"]);
+    }
+
+    [Fact]
     public void RowsWithoutIdOrWithDuplicateIdsDoNotBreakTheBuild()
     {
         IReadOnlyList<MetaRow> tables = [.. Tables, Row(("Name", "NoId")), Row(("ID", 1L), ("Name", "DuplicateOfSales"))];

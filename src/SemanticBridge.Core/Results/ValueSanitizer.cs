@@ -21,9 +21,9 @@ public sealed class ValueSanitizer
             case float f when !float.IsFinite(f):
                 return CountNonFinite(columnName);
             case DateTime dt:
-                return dt.ToString("o", CultureInfo.InvariantCulture);
+                return FormatDateTime(dt);
             case DateTimeOffset dto:
-                return dto.ToString("yyyy-MM-dd'T'HH:mm:sszzz", CultureInfo.InvariantCulture);
+                return FormatDateTime(dto.DateTime) + dto.ToString("zzz", CultureInfo.InvariantCulture);
             case TimeSpan ts:
                 return ts.ToString("c", CultureInfo.InvariantCulture);
             case byte[] bytes:
@@ -33,6 +33,13 @@ public sealed class ValueSanitizer
             default:
                 return Convert.ToString(value, CultureInfo.InvariantCulture);
         }
+    }
+
+    // Same shape the REST API returns: no offset or Z, milliseconds only when non-zero (trailing zeros trimmed).
+    private static string FormatDateTime(DateTime dt)
+    {
+        var text = dt.ToString("yyyy-MM-dd'T'HH:mm:ss", CultureInfo.InvariantCulture);
+        return dt.Millisecond == 0 ? text : text + "." + dt.Millisecond.ToString("000", CultureInfo.InvariantCulture).TrimEnd('0');
     }
 
     private object? CountNonFinite(string columnName)

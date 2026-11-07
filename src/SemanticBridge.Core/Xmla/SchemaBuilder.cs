@@ -80,7 +80,7 @@ public static class SchemaBuilder
                 Blank(t.Str("Description")),
                 t.Bool("IsHidden"),
                 [.. columnsByTable.GetValueOrDefault(id, []).Select(c => new SchemaColumn(
-                    ColumnName(c), DataTypeName(c.Int("ExplicitDataType") is > 0 ? c.Int("ExplicitDataType") : c.Int("InferredDataType")),
+                    ColumnName(c), DataTypeName(ColumnDataType(c)),
                     Blank(c.Str("Description")), c.Bool("IsHidden"))).OrderBy(c => c.Name, StringComparer.OrdinalIgnoreCase)],
                 [.. measuresByTable.GetValueOrDefault(id, []).Select(m => new SchemaMeasure(
                     m.Str("Name") ?? string.Empty, Blank(m.Str("Expression")), DataTypeName(m.Int("DataType")),
@@ -115,6 +115,12 @@ public static class SchemaBuilder
     }
 
     private static string ColumnName(MetaRow c) => Blank(c.Str("ExplicitName")) ?? Blank(c.Str("InferredName")) ?? string.Empty;
+
+    // Calculated columns report ExplicitDataType 1 (Automatic); the engine's inferred type is the real one.
+    private static int? ColumnDataType(MetaRow c) =>
+        c.Int("ExplicitDataType") is > 1 and var explicitType ? explicitType
+        : c.Int("InferredDataType") is > 1 and var inferredType ? inferredType
+        : c.Int("ExplicitDataType");
 
     private static string? Blank(string? s) => string.IsNullOrWhiteSpace(s) ? null : s;
 
