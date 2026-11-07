@@ -125,10 +125,50 @@ public static class McpHost
         };
     }
 
+    /// <summary>Kestrel could not bind the configured address (port in use, no permission, ...).</summary>
+    internal static bool IsBindFailure(Exception ex) => ex is IOException && ex.Message.StartsWith("Failed to bind", StringComparison.Ordinal);
+
+    internal static bool IsAddressInUse(Exception ex)
+    {
+        for (var e = ex; e is not null; e = e.InnerException)
+            if (e is System.Net.Sockets.SocketException { SocketErrorCode: System.Net.Sockets.SocketError.AddressAlreadyInUse }
+                || e.Message.Contains("address already in use", StringComparison.OrdinalIgnoreCase))
+                return true;
+        return false;
+    }
+
     private static void ConfigureLogging(ILoggingBuilder logging)
     {
         logging.ClearProviders();
-        logging.AddConsole(o => o.LogToStandardErrorThreshold = LogLevel.Trace);
+        // The console logger is wrapped so that only the startup bind failure is dropped: the CLI reports it as one error line,
+        // while the host's critical log of it would add a stack trace. Every other host or Kestrel log still reaches stderr.
+        var console = LoggerFactory.Create(b =>
+        {
+            b.AddConsole(o => o.LogToStandardErrorThreshold = LogLevel.Trace);
+            b.SetMinimumLevel(LogLevel.Warning);
+        });
+        logging.AddProvider(new BindFailureFilterProvider(console));
         logging.SetMinimumLevel(LogLevel.Warning);
+    }
+}
+
+/// <summary>Forwards logs to an inner factory except entries whose exception is a bind failure (see <see cref="McpHost.IsBindFailure"/>).</summary>
+internal sealed class BindFailureFilterProvider(ILoggerFactory inner) : ILoggerProvider
+{
+    public ILogger CreateLogger(string categoryName) => new FilteringLogger(inner.CreateLogger(categoryName));
+
+    public void Dispose() => inner.Dispose();
+
+    private sealed class FilteringLogger(ILogger target) : ILogger
+    {
+        public IDisposable? BeginScope<TState>(TState state) where TState : notnull => target.BeginScope(state);
+
+        public bool IsEnabled(LogLevel logLevel) => target.IsEnabled(logLevel);
+
+        public void Log<TState>(LogLevel logLevel, EventId eventId, TState state, Exception? exception, Func<TState, Exception?, string> formatter)
+        {
+            if (exception is not null && McpHost.IsBindFailure(exception)) return;
+            target.Log(logLevel, eventId, state, exception, formatter);
+        }
     }
 }

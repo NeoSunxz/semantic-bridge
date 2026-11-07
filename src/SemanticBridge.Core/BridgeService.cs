@@ -36,9 +36,7 @@ public sealed class BridgeService(ResolvedConfig config, PowerBiRestClient rest,
     /// <summary>Resolves a workspace by name or ID (falling back to default_workspace) and computes its XMLA name.</summary>
     public async Task<ResolvedWorkspace> ResolveWorkspaceAsync(string? workspace, CancellationToken ct)
     {
-        var input = !string.IsNullOrWhiteSpace(workspace) ? workspace : config.DefaultWorkspace;
-        if (string.IsNullOrWhiteSpace(input))
-            throw new BridgeException(ErrorKind.Usage, "No workspace given. Pass a workspace (-w in the CLI, `workspace` in MCP) or set default_workspace in the profile.");
+        var input = config.ResolveWorkspaceInput(workspace);
         var all = await rest.GetWorkspacesAsync(ct).ConfigureAwait(false);
         var ws = NameResolver.Resolve(all, input, "Workspace", w => w.Id, w => w.Name);
         // The XMLA endpoint addresses a workspace by name; duplicate names need the "Name - <guid>" form.
@@ -99,7 +97,9 @@ public sealed class BridgeService(ResolvedConfig config, PowerBiRestClient rest,
 
     private async Task<(ResolvedWorkspace Workspace, Dataset Dataset)> ResolveAsync(string? workspace, string? dataset, CancellationToken ct)
     {
+        // Validate both inputs before any network call.
         var input = config.ResolveDatasetInput(dataset);
+        config.ResolveWorkspaceInput(workspace);
         var ws = await ResolveWorkspaceAsync(workspace, ct).ConfigureAwait(false);
         var datasets = await rest.GetDatasetsAsync(ws.Workspace.Id, ct).ConfigureAwait(false);
         var ds = NameResolver.Resolve(datasets, input, "Dataset", d => d.Id, d => d.Name);

@@ -35,7 +35,7 @@ public sealed class BridgeRuntime : IDisposable
         // Per-call timeouts are applied by the REST client, so the HttpClient itself never times out.
         var http = new HttpClient { Timeout = Timeout.InfiniteTimeSpan };
         var rest = new PowerBiRestClient(http, config, tokens, scrubber);
-        var xmla = new AdomdXmlaClient(new TokenAdomdConnectionFactory(config, tokens, scrubber), scrubber, config.QueryTimeoutSeconds);
+        var xmla = new AdomdXmlaClient(new TokenAdomdConnectionFactory(config, tokens, scrubber), scrubber, config.QueryTimeoutSeconds, config.MaxRowsCeiling);
         return new BridgeRuntime(http, scrubber, tokens, rest, xmla, new BridgeService(config, rest, xmla, new TomDescriptionWriter(config, tokens, scrubber), gate));
     }
 

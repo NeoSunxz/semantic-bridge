@@ -34,7 +34,7 @@ public sealed class ArgumentCheckedTool(McpServerTool inner, SecretScrubber scru
         var unknown = supplied.Keys.Where(k => !properties.ContainsKey(k)).Order(StringComparer.Ordinal).ToArray();
         var wrongType = supplied
             .Where(kv => properties.TryGetValue(kv.Key, out var s) && !TypeMatches(s, kv.Value) && !missing.Contains(kv.Key))
-            .Select(kv => $"{kv.Key} (expected {Describe(properties[kv.Key])})")
+            .Select(kv => $"{kv.Key} (expected {Describe(properties[kv.Key], kv.Value)})")
             .ToArray();
         if (missing.Length == 0 && unknown.Length == 0 && wrongType.Length == 0) return null;
 
@@ -42,7 +42,7 @@ public sealed class ArgumentCheckedTool(McpServerTool inner, SecretScrubber scru
         if (missing.Length > 0) parts.Add("Missing required argument(s): " + string.Join(", ", missing) + ".");
         if (unknown.Length > 0) parts.Add("Unknown argument(s): " + string.Join(", ", unknown) + ".");
         if (wrongType.Length > 0) parts.Add("Wrong type for argument(s): " + string.Join(", ", wrongType) + ".");
-        parts.Add("Expected arguments: " + string.Join(", ", properties.Keys) + ".");
+        parts.Add(properties.Count == 0 ? "This tool takes no arguments." : "Expected arguments: " + string.Join(", ", properties.Keys) + ".");
         return string.Join(' ', parts);
     }
 
@@ -57,7 +57,12 @@ public sealed class ArgumentCheckedTool(McpServerTool inner, SecretScrubber scru
         };
     }
 
-    private static string Describe(JsonElement property) => string.Join(" or ", Types(property).Where(t => t != "null"));
+    private static string Describe(JsonElement property, JsonElement value)
+    {
+        var text = string.Join(" or ", Types(property).Where(t => t != "null"));
+        // All integer parameters are 32-bit; say so when the value is a whole number that only fails the range.
+        return text == "integer" && value.ValueKind == JsonValueKind.Number && value.TryGetInt64(out _) ? "integer within 32-bit range" : text;
+    }
 
     private static bool TypeMatches(JsonElement property, JsonElement value)
     {
@@ -67,7 +72,7 @@ public sealed class ArgumentCheckedTool(McpServerTool inner, SecretScrubber scru
         return types.Length == 0 || types.Any(t => t switch
         {
             "string" => value.ValueKind == JsonValueKind.String,
-            "integer" => value.ValueKind == JsonValueKind.Number && value.TryGetInt64(out _),
+            "integer" => value.ValueKind == JsonValueKind.Number && value.TryGetInt32(out _),
             "number" => value.ValueKind == JsonValueKind.Number,
             "boolean" => value.ValueKind is JsonValueKind.True or JsonValueKind.False,
             "object" => value.ValueKind == JsonValueKind.Object,

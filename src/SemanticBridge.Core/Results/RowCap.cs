@@ -4,8 +4,9 @@ namespace SemanticBridge.Core.Results;
 /// Collects rows up to <c>maxRows</c> and detects truncation. Every row-collecting path goes through it.
 /// Callers keep reading while <see cref="Add"/> returns true: it accepts up to maxRows rows and flags
 /// truncation when one more row exists, so at most maxRows + 1 rows are read.
+/// <paramref name="ceiling"/> is max_rows_ceiling: when the cap already equals it, raising the limit is not suggested.
 /// </summary>
-public sealed class RowCap(int maxRows)
+public sealed class RowCap(int maxRows, int? ceiling = null)
 {
     private readonly List<object?[]> _rows = [];
 
@@ -28,7 +29,8 @@ public sealed class RowCap(int maxRows)
         return true;
     }
 
-    public string? Reason => Truncated
-        ? $"Result exceeds max_rows ({MaxRows}); more rows exist. Aggregate or filter in DAX (e.g. SUMMARIZECOLUMNS, TOPN), or raise the row limit (--max-rows in the CLI, max_rows in MCP)."
-        : null;
+    public string? Reason => !Truncated ? null
+        : ceiling is { } c && MaxRows >= c
+            ? $"Result exceeds max_rows ({MaxRows}), which is the maximum (max_rows_ceiling); more rows exist. Aggregate or filter in DAX (e.g. SUMMARIZECOLUMNS, TOPN)."
+            : $"Result exceeds max_rows ({MaxRows}); more rows exist. Aggregate or filter in DAX (e.g. SUMMARIZECOLUMNS, TOPN), or raise the row limit (--max-rows in the CLI, max_rows in MCP).";
 }

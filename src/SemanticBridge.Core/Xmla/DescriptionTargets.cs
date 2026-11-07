@@ -50,7 +50,13 @@ public static class DescriptionTargets
 
     public static DescriptionTarget Table(string name) => new(TargetKind.Table, null, RequireName(name, "table"));
 
-    public static DescriptionTarget Measure(string name) => new(TargetKind.Measure, null, RequireName(name, "measure"));
+    /// <summary>A measure name may be given as <c>[Name]</c> (the DAX form); one surrounding pair of brackets is dropped.</summary>
+    public static DescriptionTarget Measure(string name)
+    {
+        var trimmed = RequireName(name, "measure");
+        if (trimmed.Length > 2 && trimmed[0] == '[' && trimmed[^1] == ']') trimmed = trimmed[1..^1];
+        return new(TargetKind.Measure, null, trimmed);
+    }
 
     private static string RequireName(string name, string what) =>
         string.IsNullOrWhiteSpace(name) ? throw new BridgeException(ErrorKind.Usage, $"The {what} name is empty.") : name.Trim();

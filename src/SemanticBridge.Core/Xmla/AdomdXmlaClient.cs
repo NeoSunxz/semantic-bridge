@@ -8,7 +8,7 @@ using SemanticBridge.Core.Safety;
 namespace SemanticBridge.Core.Xmla;
 
 /// <summary>XMLA queries and model metadata through ADOMD.NET.</summary>
-public sealed class AdomdXmlaClient(IAdomdConnectionFactory factory, SecretScrubber scrubber, int timeoutSeconds) : IXmlaClient
+public sealed class AdomdXmlaClient(IAdomdConnectionFactory factory, SecretScrubber scrubber, int timeoutSeconds, int maxRowsCeiling = int.MaxValue) : IXmlaClient
 {
     /// <summary>Row cap for metadata queries (INFO.*), matching the global ceiling.</summary>
     private const int MetadataMaxRows = 100_000;
@@ -110,7 +110,7 @@ public sealed class AdomdXmlaClient(IAdomdConnectionFactory factory, SecretScrub
                 columns[i] = new ColumnInfo(names[i], TypeName(reader, i));
             }
 
-            var cap = new RowCap(maxRows);
+            var cap = new RowCap(maxRows, maxRowsCeiling);
             var sanitizer = new ValueSanitizer();
             while (reader.Read())
             {

@@ -137,7 +137,7 @@ A file can hold several named profiles under `profiles:`. The profile is chosen 
 4. the only profile in the file
 5. no profile in the file, but `SBRIDGE_TENANT_ID`, `SBRIDGE_CLIENT_ID` or `SBRIDGE_CLIENT_SECRET` set (environment-only setup, used by Docker and CI). All three credentials are needed. `SBRIDGE_CLOUD`, `SBRIDGE_WORKSPACE` and `SBRIDGE_DATASET` are optional and do not start this mode on their own.
 
-If the file has several profiles and no `default_profile`, the command fails. Profile names are matched without regard to case. Unknown keys in the file are rejected.
+If the file has several profiles and no `default_profile`, the command fails. Profile names are matched without regard to case, so two profiles whose names differ only in case are rejected. Unknown keys in the file are rejected.
 
 ### Keys
 
@@ -151,10 +151,10 @@ Keys under each profile:
 | `client_id` | none | Required. |
 | `client_secret` | none | Plaintext secret. Accepted but discouraged. |
 | `client_secret_env` | none | Name of an environment variable that holds the secret. |
-| `authority_host` | cloud preset | Required for `custom`. |
+| `authority_host` | cloud preset | Required for `custom`. Endpoint URLs (this key, `token_scope`, `rest_base_url`, `xmla_base`) must not contain credentials such as `user:pw@host`; such a value is a configuration error. |
 | `token_scope` | cloud preset | Required for `custom`. |
 | `rest_base_url` | cloud preset | Required for `custom`. |
-| `xmla_base` | cloud preset | Required for `custom`. Must contain `{workspace}`. |
+| `xmla_base` | cloud preset | Required for `custom`. Must contain `{workspace}` and must not contain `;`. |
 | `default_workspace` | none | Name or ID, used when `-w` or `workspace` is not given. |
 | `default_dataset` | none | Name or ID, used when `-d` or `dataset` is not given. Not used by the MCP write tools (see [MCP server](#mcp-server)). |
 | `allow_write` | `false` | Must be `true` for writes (see [Write-risk warning](#write-risk-warning)). |
@@ -206,7 +206,7 @@ Global options, accepted by every command: `--config <path>` (env `SBRIDGE_CONFI
 
 Output goes to stdout. Diagnostics, notes and errors go to stderr.
 
-Workspaces and datasets can be given by name or by ID. A name that matches more than one item is an error that asks for the ID. `-w` can be left out when `default_workspace` is set, and `-d` when `default_dataset` is set. `describe` and `refresh` also use the default dataset and print the dataset they resolved.
+Workspaces and datasets can be given by name or by ID. A name that matches more than one item is an error that asks for the ID. `-w` can be left out when `default_workspace` is set, and `-d` when `default_dataset` is set. `describe` and `refresh` also use the default dataset and print the dataset they resolved. Only a missing `-w` or `-d` uses the default: an explicitly empty value (`-d ""`, `-w ""`) is a usage error (exit `2`), never "use the default". Option values for `--via` are case-insensitive.
 
 | Command | Purpose | Key options |
 |---|---|---|
@@ -225,12 +225,13 @@ Workspaces and datasets can be given by name or by ID. A name that matches more 
 Notes on behaviour that is not obvious from the table:
 
 - **Query output.** In table or CSV format, rows go to stdout. Stderr gets a summary line (`-- N row(s), path: xmla|rest, M ms`), a `note: result is TRUNCATED.` line when the result is cut off, and a `warning:` line for each warning. JSON output puts everything on stdout: `columns`, `rows`, `row_count`, `truncated`, `truncation_reason`, `path`, `elapsed_ms` and `warnings`. Column names are returned as the engine reports them, for example `Sales[Amount]` and `[Total Sales]`. Over REST, column types are inferred from the JSON values because `executeQueries` returns no types, so date/time columns show as `String`; date/time values use the same `yyyy-MM-ddTHH:mm:ss[.fff]` format on both paths.
+- **Table output.** Tabs, line breaks, other control characters and bidi override characters in a cell are shown as visible escapes (`\t`, `\r`, `\n`, `\u{XXXX}`) so a value cannot break the layout. CSV and JSON output are unchanged.
 - **Truncation is always reported.** A result cut off by a row cap is marked `truncated` in JSON and shown as a `note:` line in table or CSV output. A `--max-rows` above `max_rows_ceiling` is capped, and a warning says so. When metadata has more than 100,000 rows, `schema` reports the schema as incomplete in a warning.
 - **One EVALUATE per query.** A query should contain one `EVALUATE`. Extra result sets (from further `EVALUATE` statements) are not returned, and the result is marked `truncated` with a reason. This applies to the CLI and the MCP `run_dax` tool, over XMLA and REST.
 - **`--via auto`.** `auto` uses XMLA. It uses REST only when the workspace is known not to be on dedicated capacity, and then adds a warning. It never retries over REST after an XMLA error. `schema --via rest` is refused.
-- **Confirmation.** `describe` and `refresh` ask before they change anything. `-y` or `--yes` skips the question. When stdin is not a terminal and `--yes` is not given, both refuse before any network call, with exit code `2`. `describe` prints `old -> new` for each change to stderr and lists unchanged targets. If you answer no, it exits `1` and changes nothing.
-- **`refresh --wait`.** The command exits `0` only when the final status is `Completed`. It exits `1` when the refresh failed, when `--timeout` (1–86400 seconds, default 600) passed, or when the refresh cannot be found in the history. In the last case it prints `status: unknown`: the outcome is unknown, and the refresh may still be running.
-- **Exit codes.** `0` success. `1` runtime error: a request failed, a `config test` step failed, you answered no to a confirmation, or a refresh failed, timed out or has an unknown outcome. `2` usage or configuration error: bad options or values, unknown config keys, missing credentials or profile, writes disabled, or an HTTP bind that needs a token. `130` cancelled with Ctrl-C.
+- **Confirmation.** `describe` and `refresh` ask before they change anything. `-y` or `--yes` skips the question. When stdin is not a terminal and `--yes` is not given, both refuse before any network call, with exit code `2`. `describe` prints the workspace and dataset, then `old -> new` for each change (backslash and quote escaped, plus tab, line breaks, other control characters and bidi overrides shown as `\t`, `\r`, `\n`, `\u{XXXX}`) and the unchanged targets to stderr; with nothing to change it says `No changes to apply.` and prints no table. A measure may be given as `Name` or `[Name]`. If you answer no, it exits `1` and changes nothing.
+- **`refresh --wait`.** The command exits `0` only when the final status is `Completed`. It exits `1` when the refresh failed, when `--timeout` (1–86400 seconds, default 600) passed, or when the refresh cannot be found in the history. `--timeout` without `--wait` is a usage error. In the last case it prints `status: unknown`: the outcome is unknown, and the refresh may still be running.
+- **Exit codes.** `0` success. `1` runtime error: a request failed, the HTTP port is already in use, a `config test` step failed, you answered no to a confirmation, or a refresh failed, timed out or has an unknown outcome. `2` usage or configuration error: bad options or values, unknown config keys, missing credentials or profile, writes disabled, or an HTTP bind that needs a token. `130` cancelled with Ctrl-C.
 
 ## MCP server
 
@@ -250,7 +251,7 @@ Read tools are always registered. Write tools are registered only when writes ar
 | `update_description` | yes | `dataset`, `target_type` (`table`, `column` or `measure`), `target`, `description`, `workspace` (optional) |
 | `refresh_dataset` | yes | `dataset`, `workspace` (optional) |
 
-The read tools fall back to `default_dataset` when `dataset` is omitted. The write tools (`update_description`, `refresh_dataset`) always require `dataset`, so an AI client never changes a default dataset implicitly.
+The read tools fall back to `default_dataset` when `dataset` is omitted. The write tools (`update_description`, `refresh_dataset`) always require `dataset`, so an AI client never changes a default dataset implicitly. In every tool, an explicitly empty `dataset` or `workspace` is a tool error, not "use the default". Integer arguments (`max_rows`, `top`) must fit in 32 bits.
 
 Results are JSON text. A `run_dax` result has the same fields as the CLI JSON output, and gets a `note` field when it is truncated. Failures come back as tool errors with the message scrubbed of secrets, plus a hint where one applies. A call with missing, unknown or wrong-typed arguments fails with a tool error that names the argument(s) and lists the expected ones (never the values).
 
@@ -388,6 +389,9 @@ Workspaces that are not on dedicated capacity have no XMLA endpoint. On these wo
 - `executeQueries` returns at most 100,000 rows or 1,000,000 values per query, whichever is hit first, and at most 120 query requests per minute per user (Execute Queries page above).
 - `executeQueries` also caps a response at about 15 MB of data. This was observed live as the error `DaxByteCountNotSupported` ("More than 15728640 bytes"). `sbridge` reports it as `truncated: true` with the reason.
 - If REST returns an error after partial data, the result is marked truncated.
+- With several `EVALUATE` statements REST may refuse the query (`DaxResultsetCountNotSupported`). `sbridge` then returns 0 rows with the same truncation reason as XMLA, instead of an error.
+- NaN and ±Infinity come back over REST as the strings `"NaN"`, `"Infinity"` and `"-Infinity"` (column type `String`). Over XMLA they become null with a warning. Use `DIVIDE` in DAX to avoid them.
+- A result with 0 rows has no column names over REST: this is a limit of `executeQueries`.
 - Microsoft does not support service principals on datasets with row-level security or SSO (Execute Queries page above).
 - `refresh` and `refresh-status` use REST, so they work on these workspaces too.
 

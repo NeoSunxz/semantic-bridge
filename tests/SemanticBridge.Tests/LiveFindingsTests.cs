@@ -81,7 +81,7 @@ public sealed class ErrorHintsScopeTests
     [Fact]
     public void RealXmlaUnavailableErrorsStillGetTheHint()
     {
-        Assert.Contains("XMLA endpoint is not available", ErrorHints.For("XMLA connection failed: the XMLA endpoint is disabled for this capacity"));
+        Assert.Contains("XMLA endpoint is not available", ErrorHints.For("XMLA connection failed: the XMLA endpoint is disabled for this capacity", ErrorKind.Xmla));
     }
 }
 

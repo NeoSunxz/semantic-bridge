@@ -38,13 +38,33 @@ public sealed class ResolvedConfig
     /// <summary>Config key to a human-readable origin such as "env SBRIDGE_TENANT_ID" or "preset china".</summary>
     public IReadOnlyDictionary<string, string> Sources { get; init; } = new Dictionary<string, string>();
 
-    /// <summary>Returns the given dataset, or default_dataset when none is given; a usage error if neither is set.</summary>
+    /// <summary>
+    /// Returns the given dataset, or default_dataset when none is given (null); a usage error if neither is set.
+    /// An explicitly empty or whitespace-only value is a usage error, never a silent fallback to the default.
+    /// </summary>
     public string ResolveDatasetInput(string? dataset)
     {
-        var input = !string.IsNullOrWhiteSpace(dataset) ? dataset : DefaultDataset;
-        if (string.IsNullOrWhiteSpace(input))
+        if (dataset is not null)
+        {
+            if (string.IsNullOrWhiteSpace(dataset)) throw new BridgeException(ErrorKind.Usage, "Dataset name or ID is empty.");
+            return dataset;
+        }
+        if (string.IsNullOrWhiteSpace(DefaultDataset))
             throw new BridgeException(ErrorKind.Usage, "No dataset given: pass a dataset (-d in the CLI, `dataset` in MCP) or set default_dataset (or SBRIDGE_DATASET).");
-        return input;
+        return DefaultDataset;
+    }
+
+    /// <summary>Like <see cref="ResolveDatasetInput"/> for the workspace and default_workspace.</summary>
+    public string ResolveWorkspaceInput(string? workspace)
+    {
+        if (workspace is not null)
+        {
+            if (string.IsNullOrWhiteSpace(workspace)) throw new BridgeException(ErrorKind.Usage, "Workspace name or ID is empty.");
+            return workspace;
+        }
+        if (string.IsNullOrWhiteSpace(DefaultWorkspace))
+            throw new BridgeException(ErrorKind.Usage, "No workspace given. Pass a workspace (-w in the CLI, `workspace` in MCP) or set default_workspace (or SBRIDGE_WORKSPACE).");
+        return DefaultWorkspace;
     }
 
     /// <summary>Throws a config error listing every credential that is still missing.</summary>

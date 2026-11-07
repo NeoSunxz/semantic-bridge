@@ -136,7 +136,7 @@ public sealed class McpTools(BridgeService service, SecretScrubber scrubber)
         catch (Exception ex)
         {
             var message = scrubber.Scrub(ex is BridgeException ? ex.Message : $"unexpected {ex.GetType().Name}: {ex.Message}");
-            if (ex is not BridgeException { Kind: ErrorKind.Usage } && ErrorHints.For(message) is { } hint) message += " Hint: " + hint;
+            if (ex is not BridgeException { Kind: ErrorKind.Usage } && ErrorHints.For(ex, message) is { } hint) message += " Hint: " + hint;
             return Error(message);
         }
     }
