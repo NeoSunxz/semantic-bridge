@@ -172,6 +172,9 @@ public sealed class PowerBiRestClient
 
         var reasons = new List<string>();
         if (capped && cap.Reason is { } capReason) reasons.Add(capReason);
+        var moreResultSets = (results.ValueKind == JsonValueKind.Array && results.GetArrayLength() > 1) || (first is { } f0
+            && f0.TryGetProperty("tables", out var allTables) && allTables.ValueKind == JsonValueKind.Array && allTables.GetArrayLength() > 1);
+        if (moreResultSets) reasons.Add(ResultSets.MultipleNotice);
         if (errorText is not null)
             reasons.Add("REST executeQueries returned HTTP 200 with an error, so the data is partial: " + errorText);
         if (received >= ServiceMaxRows || (long)received * Math.Max(names.Count, 1) >= ServiceMaxValues)

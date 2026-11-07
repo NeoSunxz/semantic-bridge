@@ -200,7 +200,7 @@ public sealed class CliApp
         var ds = DatasetOption();
         var file = new Option<string?>("--file") { Description = "Read the DAX query from a file." };
         var format = FormatOption("table", "json", "csv");
-        var maxRows = new Option<int?>("--max-rows") { Description = "Row limit for this query (default max_rows; capped by max_rows_ceiling, which is reported)." };
+        var maxRows = new Option<int?>("--max-rows") { Description = "Row limit for this query (default max_rows; capped by max_rows_ceiling, which is reported).", CustomParser = r => ParseWholeNumber(r, "--max-rows") };
         var via = ViaOption();
         cmd.Arguments.Add(dax);
         foreach (var o in new Option[] { ws, ds, file, format, maxRows, via }) cmd.Options.Add(o);
@@ -274,10 +274,10 @@ public sealed class CliApp
         var ws = WorkspaceOption();
         var ds = DatasetOption();
         var wait = new Option<bool>("--wait") { Description = "Poll until the refresh completes, fails or --timeout passes." };
-        var timeout = new Option<int>("--timeout") { Description = "With --wait: seconds to wait (1..86400).", DefaultValueFactory = _ => 600 };
+        var timeout = new Option<int>("--timeout") { Description = "With --wait: seconds to wait (1..86400).", DefaultValueFactory = _ => 600, CustomParser = r => ParseWholeNumber(r, "--timeout") ?? 600 };
         timeout.Validators.Add(r =>
         {
-            if (r.GetValueOrDefault<int>() is < 1 or > 86400) r.AddError("--timeout must be between 1 and 86400.");
+            if (r.Tokens.Count > 0 && int.TryParse(r.Tokens[0].Value, out var v) && v is < 1 or > 86400) r.AddError("--timeout must be between 1 and 86400.");
         });
         var yes = new Option<bool>("--yes", "-y") { Description = "Refresh without asking for confirmation (for scripts)." };
         foreach (var o in new Option[] { ws, ds, wait, timeout, yes }) cmd.Options.Add(o);
@@ -333,7 +333,7 @@ public sealed class CliApp
         var cmd = new Command("refresh-status", "Show a dataset's recent refresh history (newest first).");
         var ws = WorkspaceOption();
         var ds = DatasetOption();
-        var top = new Option<int>("--top") { Description = $"How many entries (1..{BridgeService.MaxRefreshHistory}).", DefaultValueFactory = _ => 5 };
+        var top = new Option<int>("--top") { Description = $"How many entries (1..{BridgeService.MaxRefreshHistory}).", DefaultValueFactory = _ => 5, CustomParser = r => ParseWholeNumber(r, "--top") ?? 5 };
         var format = FormatOption("table", "json", "csv");
         foreach (var o in new Option[] { ws, ds, top, format }) cmd.Options.Add(o);
         cmd.SetAction((pr, ct) => Run(async () =>
@@ -352,10 +352,10 @@ public sealed class CliApp
         var cmd = new Command("mcp", "Run the MCP server (stdio by default; --http for Streamable HTTP). Uses one profile for its lifetime.");
         var http = new Option<bool>("--http") { Description = "Serve Streamable HTTP instead of stdio. Bearer token from SBRIDGE_HTTP_TOKEN (required on a non-loopback host)." };
         var host = new Option<string>("--host") { Description = "HTTP bind address (use 0.0.0.0 to listen on all interfaces).", DefaultValueFactory = _ => "127.0.0.1" };
-        var port = new Option<int>("--port") { Description = "HTTP port.", DefaultValueFactory = _ => 8080 };
+        var port = new Option<int>("--port") { Description = "HTTP port.", DefaultValueFactory = _ => 8080, CustomParser = r => ParseWholeNumber(r, "--port") ?? 8080 };
         port.Validators.Add(r =>
         {
-            if (r.GetValueOrDefault<int>() is < 1 or > 65535) r.AddError("--port must be between 1 and 65535.");
+            if (r.Tokens.Count > 0 && int.TryParse(r.Tokens[0].Value, out var v) && v is < 1 or > 65535) r.AddError("--port must be between 1 and 65535.");
         });
         var noAuth = new Option<bool>("--no-auth") { Description = "Allow --http on a non-loopback --host without SBRIDGE_HTTP_TOKEN (unauthenticated; dangerous). Env: SBRIDGE_HTTP_NO_AUTH=1." };
         var allowHttpWrite = new Option<bool>("--allow-http-write") { Description = "Allow write tools over HTTP (also needs allow_write: true). Env: SBRIDGE_ALLOW_HTTP_WRITE=1." };
@@ -512,6 +512,16 @@ public sealed class CliApp
         if (_serviceFactory is { } factory) return new ServiceScope(factory(cfg, gate), null);
         var runtime = CreateRuntime(cfg, gate);
         return new ServiceScope(runtime.Service, runtime);
+    }
+
+    /// <summary>Parses the single token of an integer option; a bad value becomes a usage error that names the option.</summary>
+    private static int? ParseWholeNumber(System.CommandLine.Parsing.ArgumentResult result, string option)
+    {
+        var token = result.Tokens.Count > 0 ? result.Tokens[0].Value : null;
+        if (token is null) return null;
+        if (int.TryParse(token, System.Globalization.NumberStyles.Integer, System.Globalization.CultureInfo.InvariantCulture, out var value)) return value;
+        result.AddError($"Invalid value '{token}' for {option}: expected a whole number.");
+        return null;
     }
 
     private async Task<int> Run(Func<Task<int>> body)

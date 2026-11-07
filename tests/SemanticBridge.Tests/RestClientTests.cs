@@ -71,6 +71,17 @@ public sealed class RestClientTests
         Assert.Contains("bad column", ex.Message);
     }
 
+    [Theory]
+    [InlineData("""{"results":[{"tables":[{"rows":[{"[x]":1}]},{"rows":[{"[y]":2}]}]}]}""")]
+    [InlineData("""{"results":[{"tables":[{"rows":[{"[x]":1}]}]},{"tables":[{"rows":[{"[y]":2}]}]}]}""")]
+    public async Task MultipleResultSetsAreReportedAsTruncated(string body)
+    {
+        var result = await TestData.Rest(TestData.PowerBi(body)).ExecuteQueryAsync(TestData.WorkspaceId, TestData.DatasetId, "EVALUATE x EVALUATE y", 100, CancellationToken.None);
+        Assert.Equal(1, result.RowCount);
+        Assert.True(result.Truncated);
+        Assert.Contains("multiple EVALUATE", result.TruncationReason);
+    }
+
     [Fact]
     public async Task RowCapAppliesToRestRowsToo()
     {

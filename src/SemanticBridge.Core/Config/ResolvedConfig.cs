@@ -43,7 +43,7 @@ public sealed class ResolvedConfig
     {
         var input = !string.IsNullOrWhiteSpace(dataset) ? dataset : DefaultDataset;
         if (string.IsNullOrWhiteSpace(input))
-            throw new BridgeException(ErrorKind.Usage, "No dataset given: pass -d or set default_dataset (or SBRIDGE_DATASET).");
+            throw new BridgeException(ErrorKind.Usage, "No dataset given: pass a dataset (-d in the CLI, `dataset` in MCP) or set default_dataset (or SBRIDGE_DATASET).");
         return input;
     }
 

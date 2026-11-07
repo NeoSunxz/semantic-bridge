@@ -38,7 +38,7 @@ public sealed class BridgeService(ResolvedConfig config, PowerBiRestClient rest,
     {
         var input = !string.IsNullOrWhiteSpace(workspace) ? workspace : config.DefaultWorkspace;
         if (string.IsNullOrWhiteSpace(input))
-            throw new BridgeException(ErrorKind.Usage, "No workspace given. Pass -w <name or ID> or set default_workspace in the profile.");
+            throw new BridgeException(ErrorKind.Usage, "No workspace given. Pass a workspace (-w in the CLI, `workspace` in MCP) or set default_workspace in the profile.");
         var all = await rest.GetWorkspacesAsync(ct).ConfigureAwait(false);
         var ws = NameResolver.Resolve(all, input, "Workspace", w => w.Id, w => w.Name);
         // The XMLA endpoint addresses a workspace by name; duplicate names need the "Name - <guid>" form.
@@ -50,7 +50,7 @@ public sealed class BridgeService(ResolvedConfig config, PowerBiRestClient rest,
     {
         // Only an explicit --via rest is a usage error; a config default of rest still reads metadata over XMLA.
         if (via == QueryVia.Rest)
-            throw new BridgeException(ErrorKind.Usage, RestSchemaUnsupported + " Use --via xmla (or omit --via).");
+            throw new BridgeException(ErrorKind.Usage, RestSchemaUnsupported + " Use via xmla (--via in the CLI, `via` in MCP) or omit it.");
 
         var (ws, ds) = await ResolveAsync(workspace, dataset, ct).ConfigureAwait(false);
         if (via != QueryVia.Xmla && ws.Workspace.IsOnDedicatedCapacity == false)

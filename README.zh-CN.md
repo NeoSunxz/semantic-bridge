@@ -226,6 +226,7 @@ profiles:
 
 - **查询输出。** 表格或 CSV 格式下，数据行写到 stdout。stderr 得到一行摘要（`-- N row(s), path: xmla|rest, M ms`）、结果被截断时的 `note: result is TRUNCATED.` 行，以及每条警告对应的 `warning:` 行。JSON 输出把所有内容放在 stdout：`columns`、`rows`、`row_count`、`truncated`、`truncation_reason`、`path`、`elapsed_ms` 和 `warnings`。列名按引擎返回的原样给出，例如 `Sales[Amount]` 和 `[Total Sales]`。走 REST 时，`executeQueries` 不返回列类型，列类型是根据 JSON 值推断的，所以日期/时间列显示为 `String`；两条路径下日期/时间值都使用相同的 `yyyy-MM-ddTHH:mm:ss[.fff]` 格式。
 - **截断一定会报告。** 因行数上限被截断的结果，在 JSON 中标记为 `truncated`，在表格或 CSV 输出中显示为 `note:` 行。超过 `max_rows_ceiling` 的 `--max-rows` 会被截到上限，并给出警告。元数据超过 100,000 行时，`schema` 会在警告中说明 schema 不完整。
+- **每个查询只含一个 EVALUATE。** 一个查询应只包含一个 `EVALUATE`。多余的结果集（来自后续的 `EVALUATE` 语句）不会返回，结果会标记为 `truncated` 并给出原因。命令行和 MCP 的 `run_dax` 工具、XMLA 和 REST 两条路径都是如此。
 - **`--via auto`。** `auto` 使用 XMLA。只有在已知工作区不在专用容量上时才使用 REST，并附带一条警告。XMLA 出错后它不会改用 REST 重试。`schema --via rest` 会被拒绝。
 - **确认。** `describe` 和 `refresh` 在做出更改前会先询问。`-y` 或 `--yes` 跳过询问。当 stdin 不是终端且没有给 `--yes` 时，两者都会在发起任何网络调用之前拒绝，退出码为 `2`。`describe` 在 stderr 打印每处更改的 `old -> new`，并列出未变化的目标。如果你回答否，它以 `1` 退出且不做任何更改。
 - **`refresh --wait`。** 只有最终状态为 `Completed` 时命令才以 `0` 退出。刷新失败、超过 `--timeout`（1–86400 秒，默认 600），或在历史记录中找不到该刷新时，以 `1` 退出。最后一种情况会打印 `status: unknown`：结果未知，刷新可能仍在运行。

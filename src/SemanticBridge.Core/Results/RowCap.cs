@@ -29,6 +29,6 @@ public sealed class RowCap(int maxRows)
     }
 
     public string? Reason => Truncated
-        ? $"Result exceeds max_rows ({MaxRows}); more rows exist. Aggregate or filter in DAX (e.g. SUMMARIZECOLUMNS, TOPN), or raise --max-rows."
+        ? $"Result exceeds max_rows ({MaxRows}); more rows exist. Aggregate or filter in DAX (e.g. SUMMARIZECOLUMNS, TOPN), or raise the row limit (--max-rows in the CLI, max_rows in MCP)."
         : null;
 }

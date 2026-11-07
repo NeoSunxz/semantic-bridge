@@ -124,12 +124,16 @@ public sealed class AdomdXmlaClient(IAdomdConnectionFactory factory, SecretScrub
                     break;
             }
 
+            // Only the first result set is returned. NextResult skips any unread rows of the current set without
+            // reading them, and extra sets are never read; their existence is reported as truncation.
+            var (truncated, reason) = ResultSets.Combine(cap, reader.NextResult());
+
             return new QueryResult
             {
                 Columns = columns,
                 Rows = cap.Rows,
-                Truncated = cap.Truncated,
-                TruncationReason = cap.Reason,
+                Truncated = truncated,
+                TruncationReason = reason,
                 Path = ResultPaths.Xmla,
                 ElapsedMs = sw.ElapsedMilliseconds,
                 Warnings = sanitizer.Warnings,
