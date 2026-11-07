@@ -1,10 +1,12 @@
 # Semantic Bridge for Power BI
 
+[中文（中国区 / 世纪互联）](README.zh-CN.md) - the Chinese guide covers the China (21Vianet) cloud. This README covers the global cloud.
+
 Semantic Bridge for Power BI is a command-line tool (`sbridge`) and an MCP server that let you read and query the Power BI semantic models you already have. It uses a Microsoft Entra service principal that you create and control, talks to the XMLA endpoint and the Power BI REST API, and has presets for the global and China (21Vianet) clouds.
 
 Not affiliated with or endorsed by Microsoft. Power BI is a trademark of Microsoft.
 
-> **Status: pre-release.** Phases 1–5 of the [v1 plan](docs/superpowers/plans/2026-11-04-v1-plan.md) are implemented locally. Nothing has been released yet, and live verification against a tenant is still pending. See [Status and platforms](#status-and-platforms).
+> **Status: pre-release.** Phases 1–5 of the [v1 plan](docs/superpowers/plans/2026-11-04-v1-plan.md) are implemented. Nothing has been released yet. Live verification so far covers linux-x64 against a China (21Vianet) tenant only; the global cloud has not been verified live. See [Status and platforms](#status-and-platforms).
 
 ## What it is and what it is not
 
@@ -37,9 +39,10 @@ The differences this project is built around are: presets for the global and Chi
 
 ## Status and platforms
 
-- Phases 1–5 are implemented locally. The first release and live verification are pending.
-- XMLA has not been verified live on any platform. Live verification on linux-x64 against a China (21Vianet) tenant is pending.
-- The global cloud and Pro (REST-only) workspaces have not been tested against a live tenant.
+- Phases 1–5 are implemented. The first release is pending.
+- Verified live on 2026-11-07 on linux-x64 against a China (21Vianet) Premium Per User (PPU) workspace: XMLA (token auth with an MSAL access token), REST, schema, queries, refresh, refresh status, description writes, MCP over stdio and HTTP, and the single-file linux-x64 binary.
+- The global cloud has not been verified live. Pro (REST-only) workspaces have not been tested against a live tenant.
+- XMLA is unverified on the other RIDs: `linux-arm64`, `win-x64`, `win-arm64`, `osx-arm64` and `osx-x64`.
 - Release binaries are built for six RIDs: `linux-x64`, `linux-arm64`, `win-x64`, `win-arm64`, `osx-arm64` and `osx-x64`. CI checks that each one starts and answers the MCP stdio handshake. CI does not call the REST API or XMLA.
 
 ## Install
@@ -74,15 +77,15 @@ The Docker Hub image is pushed only when the Docker Hub secrets are configured. 
 3. Create a client secret. Use the secret **value**, not the secret ID. When the secret expires, create a new one.
 4. Put the secret in the `SBRIDGE_CLIENT_SECRET` environment variable (see [Configuration](#configuration)).
 
-The app registration and the tenant must be in the cloud that you set in `cloud`. If authentication fails, check that `cloud` matches the tenant's cloud (global or china).
+The app registration and the tenant must be in the cloud that you set in `cloud` (`global` by default). If authentication fails, check that `cloud` matches the tenant's cloud.
 
-For the China cloud, register the app in the 21Vianet-operated Entra tenant, using the Azure China portal (portal.azure.cn).
+Register the app in the Azure portal (portal.azure.com) or the Microsoft Entra admin center (entra.microsoft.com).
 
 The app needs no Power BI API permissions and no admin consent in Entra. Access comes from the Power BI tenant settings (step 2) and the workspace role (step 3).
 
 ### 2. Enable the tenant settings
 
-A Power BI or Fabric administrator enables these in the admin portal. Give the setting to a security group that contains the app.
+A Power BI or Fabric administrator enables these in the Power BI admin portal (app.powerbi.com). Give the setting to a security group that contains the app.
 
 - **Allow service principals to use Power BI APIs** (under Developer settings). Needed for any service principal access. See [Datasets - Execute Queries In Group](https://learn.microsoft.com/en-us/rest/api/power-bi/datasets/execute-queries-in-group).
 - **Allow XMLA endpoints and Analyze in Excel with on-premises semantic models**. Needed for XMLA: schema, DAX on capacity workspaces and description writes. See [Semantic model connectivity with the XMLA endpoint](https://learn.microsoft.com/en-us/fabric/enterprise/powerbi/service-premium-connect-tools).
@@ -107,7 +110,7 @@ A Pro workspace has no XMLA endpoint. `query` and `refresh` work there through R
 | REST base (`rest_base_url`) | `https://api.powerbi.com/v1.0/myorg` | `https://api.powerbi.cn/v1.0/myorg` |
 | XMLA base (`xmla_base`) | `powerbi://api.powerbi.com/v1.0/myorg/{workspace}` | `powerbi://api.powerbi.cn/v1.0/myorg/{workspace}` |
 
-`cloud` defaults to `global`. Set `cloud: china` in the profile, or `SBRIDGE_CLOUD=china`. The China XMLA base comes from the preset and has not yet been verified live by this project.
+`cloud` defaults to `global`. The China preset is described in the Chinese guide, [README.zh-CN.md](README.zh-CN.md). The China preset, including its XMLA base, was verified live on linux-x64. The global preset has not been verified live.
 
 To use another cloud, set `cloud: custom` and give all four endpoint keys. Endpoints must be `https` URLs, except a loopback `http` address for a custom cloud. `xmla_base` must start with `powerbi://` or `asazure://` and contain `{workspace}`.
 
@@ -182,11 +185,11 @@ Keep the secret out of the file. Set `SBRIDGE_CLIENT_SECRET`, or name another va
 ### Example
 
 ```yaml
-default_profile: china
+default_profile: prod
 
 profiles:
-  china:
-    cloud: china
+  prod:
+    cloud: global
     tenant_id: "00000000-0000-0000-0000-000000000000"
     client_id: "00000000-0000-0000-0000-000000000000"
     default_workspace: "My Workspace"
@@ -243,7 +246,7 @@ Read tools are always registered. Write tools are registered only when writes ar
 | `update_description` | yes | `dataset`, `target_type` (`table`, `column` or `measure`), `target`, `description`, `workspace` (optional) |
 | `refresh_dataset` | yes | `dataset`, `workspace` (optional) |
 
-Results are JSON text. A `run_dax` result has the same fields as the CLI JSON output, and gets a `note` field when it is truncated. Failures come back as tool errors with the message scrubbed of secrets, plus a hint where one applies.
+Results are JSON text. A `run_dax` result has the same fields as the CLI JSON output, and gets a `note` field when it is truncated. Failures come back as tool errors with the message scrubbed of secrets, plus a hint where one applies. A call with missing, unknown or wrong-typed arguments fails with a tool error that names the argument(s) and lists the expected ones (never the values).
 
 The tool descriptions teach the workflow: `list_workspaces`, then `list_datasets`, then `get_model_schema`, then `run_dax`. Prefer aggregations over raw rows, and check `truncated` and `warnings`.
 
@@ -251,7 +254,7 @@ The tool descriptions teach the workflow: `list_workspaces`, then `list_datasets
 
 These are typical formats. Check your client's documentation if a format has changed. Each example starts `sbridge` with the argument `mcp`. `sbridge` must be on the PATH the client sees, or you can use the full path to the binary.
 
-Keep credentials out of shared files where you can. Where a client expands `${...}` variables, the examples use them. Where it does not, the value is written into the file, so keep that file private. If you use a config file instead of environment variables, add `SBRIDGE_PROFILE` to the `env` block. For China, add `"SBRIDGE_CLOUD": "china"`.
+Keep credentials out of shared files where you can. Where a client expands `${...}` variables, the examples use them. Where it does not, the value is written into the file, so keep that file private. If you use a config file instead of environment variables, add `SBRIDGE_PROFILE` to the `env` block.
 
 **Claude Desktop** (`claude_desktop_config.json`, in `~/Library/Application Support/Claude/` on macOS or `%APPDATA%\Claude\` on Windows). Claude Desktop does not expand variables, so the values are written here:
 
@@ -264,8 +267,7 @@ Keep credentials out of shared files where you can. Where a client expands `${..
       "env": {
         "SBRIDGE_TENANT_ID": "00000000-0000-0000-0000-000000000000",
         "SBRIDGE_CLIENT_ID": "00000000-0000-0000-0000-000000000000",
-        "SBRIDGE_CLIENT_SECRET": "replace-with-your-secret",
-        "SBRIDGE_CLOUD": "china"
+        "SBRIDGE_CLIENT_SECRET": "replace-with-your-secret"
       }
     }
   }
@@ -282,8 +284,6 @@ claude mcp add --transport stdio semantic-bridge \
   -- sbridge mcp
 ```
 
-For China, also pass `-e SBRIDGE_CLOUD=china`.
-
 Or add a project `.mcp.json`. Claude Code expands `${VAR}` from your environment:
 
 ```json
@@ -295,8 +295,7 @@ Or add a project `.mcp.json`. Claude Code expands `${VAR}` from your environment
       "env": {
         "SBRIDGE_TENANT_ID": "${SBRIDGE_TENANT_ID}",
         "SBRIDGE_CLIENT_ID": "${SBRIDGE_CLIENT_ID}",
-        "SBRIDGE_CLIENT_SECRET": "${SBRIDGE_CLIENT_SECRET}",
-        "SBRIDGE_CLOUD": "china"
+        "SBRIDGE_CLIENT_SECRET": "${SBRIDGE_CLIENT_SECRET}"
       }
     }
   }
@@ -314,8 +313,7 @@ Or add a project `.mcp.json`. Claude Code expands `${VAR}` from your environment
       "env": {
         "SBRIDGE_TENANT_ID": "${env:SBRIDGE_TENANT_ID}",
         "SBRIDGE_CLIENT_ID": "${env:SBRIDGE_CLIENT_ID}",
-        "SBRIDGE_CLIENT_SECRET": "${env:SBRIDGE_CLIENT_SECRET}",
-        "SBRIDGE_CLOUD": "china"
+        "SBRIDGE_CLIENT_SECRET": "${env:SBRIDGE_CLIENT_SECRET}"
       }
     }
   }
@@ -334,8 +332,7 @@ Or add a project `.mcp.json`. Claude Code expands `${VAR}` from your environment
       "env": {
         "SBRIDGE_TENANT_ID": "${env:SBRIDGE_TENANT_ID}",
         "SBRIDGE_CLIENT_ID": "${env:SBRIDGE_CLIENT_ID}",
-        "SBRIDGE_CLIENT_SECRET": "${env:SBRIDGE_CLIENT_SECRET}",
-        "SBRIDGE_CLOUD": "china"
+        "SBRIDGE_CLIENT_SECRET": "${env:SBRIDGE_CLIENT_SECRET}"
       }
     }
   }
@@ -350,7 +347,6 @@ The image runs `sbridge mcp --http --host 0.0.0.0 --port 8080` and exposes port 
 docker run --rm -p 127.0.0.1:8080:8080 \
   -e SBRIDGE_HTTP_TOKEN="$SBRIDGE_HTTP_TOKEN" \
   -e SBRIDGE_TENANT_ID -e SBRIDGE_CLIENT_ID -e SBRIDGE_CLIENT_SECRET \
-  -e SBRIDGE_CLOUD=china \
   ghcr.io/neosunxz/semantic-bridge:latest
 ```
 
@@ -384,6 +380,7 @@ Workspaces that are not on dedicated capacity have no XMLA endpoint. On these wo
 
 - `schema` and `describe` need XMLA and fail on these workspaces. `schema --via rest` is refused, because INFO functions are not supported by `executeQueries`.
 - `executeQueries` returns at most 100,000 rows or 1,000,000 values per query, whichever is hit first, and at most 120 query requests per minute per user (Execute Queries page above).
+- `executeQueries` also caps a response at about 15 MB of data. This was observed live as the error `DaxByteCountNotSupported` ("More than 15728640 bytes"). `sbridge` reports it as `truncated: true` with the reason.
 - If REST returns an error after partial data, the result is marked truncated.
 - Microsoft does not support service principals on datasets with row-level security or SSO (Execute Queries page above).
 - `refresh` and `refresh-status` use REST, so they work on these workspaces too.
