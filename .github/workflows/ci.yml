@@ -1,0 +1,66 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: global.json
+      - run: dotnet restore
+      - run: dotnet build --no-restore -c Release
+      - run: dotnet format --verify-no-changes --no-restore
+      - run: dotnet test --no-build -c Release
+
+  publish-smoke:
+    name: publish ${{ matrix.rid }}
+    needs: build-test
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { rid: linux-x64, os: ubuntu-latest }
+          - { rid: linux-arm64, os: ubuntu-24.04-arm }
+          - { rid: win-x64, os: windows-latest }
+          - { rid: win-arm64, os: windows-11-arm }
+          - { rid: osx-arm64, os: macos-latest }
+          - { rid: osx-x64, os: macos-15-intel }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: global.json
+      - name: Publish single file
+        shell: bash
+        run: dotnet publish src/SemanticBridge/SemanticBridge.csproj -c Release -r "${{ matrix.rid }}" -o out
+      - name: Licence files are present in the repo
+        shell: bash
+        run: |
+          test -f LICENSE
+          test "$(find licenses -type f -name '*.rtf' | wc -l)" -eq 2
+      - name: Published output must be a single file
+        shell: bash
+        run: |
+          ls -l out
+          test "$(find out -type f | wc -l)" -eq 1
+      - name: Smoke test (--version and stdio MCP handshake)
+        shell: bash
+        run: |
+          bin=out/sbridge
+          if [ -f out/sbridge.exe ]; then bin=out/sbridge.exe; fi
+          scripts/smoke-mcp.sh "$bin"

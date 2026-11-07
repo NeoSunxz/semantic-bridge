@@ -10,3 +10,4 @@ CLAUDE.local.md
 .env
 *.env
 config.local.yaml
+spike/out/
