@@ -137,7 +137,7 @@ Pro 工作区没有 XMLA 端点。`query` 和 `refresh` 在那里通过 REST 可
 4. 文件里唯一的那个档案
 5. 文件里没有档案，但设置了 `SBRIDGE_TENANT_ID`、`SBRIDGE_CLIENT_ID` 或 `SBRIDGE_CLIENT_SECRET`（纯环境变量方式，供 Docker 和 CI 使用）。三项凭据都需要。`SBRIDGE_CLOUD`、`SBRIDGE_WORKSPACE` 和 `SBRIDGE_DATASET` 是可选的，单独设置它们不会进入这种模式。
 
-如果文件里有多个档案又没有 `default_profile`，命令会失败。档案名匹配时不区分大小写，因此只有大小写不同的两个档案会被拒绝。文件中的未知键会被拒绝。
+如果文件里有多个档案又没有 `default_profile`，命令会失败。档案名匹配时不区分大小写，因此名称仅大小写不同的两个档案会被拒绝。文件中的未知键会被拒绝。
 
 ### 配置键
 

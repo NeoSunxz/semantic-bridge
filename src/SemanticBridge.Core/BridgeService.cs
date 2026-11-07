@@ -97,9 +97,8 @@ public sealed class BridgeService(ResolvedConfig config, PowerBiRestClient rest,
 
     private async Task<(ResolvedWorkspace Workspace, Dataset Dataset)> ResolveAsync(string? workspace, string? dataset, CancellationToken ct)
     {
-        // Validate both inputs before any network call.
+        // The dataset input is validated here; ResolveWorkspaceAsync validates the workspace input before any network call.
         var input = config.ResolveDatasetInput(dataset);
-        config.ResolveWorkspaceInput(workspace);
         var ws = await ResolveWorkspaceAsync(workspace, ct).ConfigureAwait(false);
         var datasets = await rest.GetDatasetsAsync(ws.Workspace.Id, ct).ConfigureAwait(false);
         var ds = NameResolver.Resolve(datasets, input, "Dataset", d => d.Id, d => d.Name);

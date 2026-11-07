@@ -257,7 +257,7 @@ public sealed class PowerBiRestClient
         return CleanAndLimit(text);
     }
 
-    /// <summary>Engine markup removed, secrets scrubbed, at most 500 characters. The one place error text is sanitised.</summary>
+    /// <summary>Engine markup removed, secrets scrubbed, at most 500 characters. REST error text is sanitised here.</summary>
     private string CleanAndLimit(string text) => Truncate(_scrubber.Scrub(EngineMessage.Clean(text)), 500);
 
     private async Task<string> SendAsync(HttpMethod method, string path, string? jsonBody, TimeSpan timeout, ErrorKind badRequestKind, CancellationToken ct,

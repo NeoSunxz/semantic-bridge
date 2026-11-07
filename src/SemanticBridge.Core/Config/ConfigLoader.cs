@@ -269,6 +269,9 @@ public static partial class ConfigLoader
         var probe = value.Replace(CloudPresets.WorkspacePlaceholder, "w", StringComparison.Ordinal);
         if (!Uri.TryCreate(probe, UriKind.Absolute, out var uri))
             throw new BridgeException(ErrorKind.Config, $"{key} is not a valid absolute URL.");
+        // A three-slash form such as powerbi:///user:pw@host/... puts the credential in the path.
+        if (uri.Host.Length == 0)
+            throw new BridgeException(ErrorKind.Config, $"{key} is not a valid absolute URL.");
         if (uri.UserInfo.Length > 0)
             throw new BridgeException(ErrorKind.Config, $"{key} must not contain credentials (user info before the host).");
     }

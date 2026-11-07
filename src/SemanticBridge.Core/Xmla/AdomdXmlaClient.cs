@@ -17,7 +17,7 @@ public sealed class AdomdXmlaClient(IAdomdConnectionFactory factory, SecretScrub
     {
         var sw = Stopwatch.StartNew();
         using var connection = await factory.OpenAsync(workspace, dataset, ct).ConfigureAwait(false);
-        return await Task.Run(() => ReadQuery(connection, dax, maxRows, sw, ct), ct).ConfigureAwait(false);
+        return await Task.Run(() => ReadQuery(connection, dax, maxRows, maxRowsCeiling, sw, ct), ct).ConfigureAwait(false);
     }
 
     public async Task<ModelSchema> GetSchemaAsync(string workspace, string dataset, string? tableFilter, CancellationToken ct)
@@ -61,7 +61,7 @@ public sealed class AdomdXmlaClient(IAdomdConnectionFactory factory, SecretScrub
 
     private IReadOnlyList<MetaRow> Info(AdomdConnection connection, string function, List<string> warnings, Stopwatch sw, CancellationToken ct)
     {
-        var result = ReadQuery(connection, $"EVALUATE INFO.{function}()", MetadataMaxRows, sw, ct);
+        var result = ReadQuery(connection, $"EVALUATE INFO.{function}()", MetadataMaxRows, null, sw, ct);
         if (result.Truncated) warnings.Add($"INFO.{function} returned more than {MetadataMaxRows} rows; the schema is incomplete.");
         return MetaRow.From(result);
     }
@@ -88,7 +88,7 @@ public sealed class AdomdXmlaClient(IAdomdConnectionFactory factory, SecretScrub
         return [.. rows.Take(MetadataMaxRows)];
     }
 
-    private QueryResult ReadQuery(AdomdConnection connection, string dax, int maxRows, Stopwatch sw, CancellationToken ct)
+    private QueryResult ReadQuery(AdomdConnection connection, string dax, int maxRows, int? ceiling, Stopwatch sw, CancellationToken ct)
     {
         using var command = connection.CreateCommand();
         command.CommandText = dax;
@@ -110,7 +110,7 @@ public sealed class AdomdXmlaClient(IAdomdConnectionFactory factory, SecretScrub
                 columns[i] = new ColumnInfo(names[i], TypeName(reader, i));
             }
 
-            var cap = new RowCap(maxRows, maxRowsCeiling);
+            var cap = new RowCap(maxRows, ceiling);
             var sanitizer = new ValueSanitizer();
             while (reader.Read())
             {

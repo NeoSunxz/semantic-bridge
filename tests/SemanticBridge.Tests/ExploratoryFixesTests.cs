@@ -573,13 +573,51 @@ public sealed class SmallFixesTests : IDisposable
 
     // f) measure in brackets
     [Theory]
-    [InlineData("[Total]", "Total")]
+    [InlineData("[Total]", "[Total]")]
     [InlineData("Total", "Total")]
-    [InlineData("  [总销售额] ", "总销售额")]
-    [InlineData("[[x]]", "[x]")]
-    public void MeasureNamesDropOneSurroundingPairOfBrackets(string input, string expected)
+    [InlineData("  [总销售额] ", "[总销售额]")]
+    public void MeasureNamesAreOnlyTrimmed(string input, string expected)
     {
         Assert.Equal(expected, DescriptionTargets.Measure(input).Name);
+    }
+
+    private static readonly IReadOnlyList<ModelObjectInfo> BracketModel =
+    [
+        new(TargetKind.Measure, "T", "[x]", null),
+        new(TargetKind.Measure, "T", "x", null),
+        new(TargetKind.Measure, "T", "Sales", null),
+        new(TargetKind.Measure, "T", "a", null),
+        new(TargetKind.Measure, "T", "b", null),
+    ];
+
+    [Fact]
+    public void AMeasureLiterallyNamedInBracketsIsFoundByItsExactName()
+        => Assert.Equal("[x]", DescriptionTargets.Resolve(BracketModel, DescriptionTargets.Measure("[x]")).Name);
+
+    [Fact]
+    public void ABracketedMeasureFallsBackToTheInnerName()
+        => Assert.Equal("Sales", DescriptionTargets.Resolve(BracketModel, DescriptionTargets.Measure("[Sales]")).Name);
+
+    [Theory]
+    [InlineData("[a] [b]")]
+    [InlineData("[[Sales]]")]
+    public void BracketsWithInnerBracketsAreNotStripped(string input)
+    {
+        var ex = Assert.Throws<BridgeException>(() => DescriptionTargets.Resolve(BracketModel, DescriptionTargets.Measure(input)));
+        Assert.Equal(ErrorKind.NotFound, ex.Kind);
+    }
+
+    [Fact]
+    public async Task RefreshRejectsAnEmptyWorkspaceBeforeAsking()
+    {
+        var o = new StringWriter();
+        var e = new StringWriter();
+        var code = await CliApp.RunAsync(["refresh", "-w", "", "-d", "Model", "--config", Config()], o, e, new StringReader("y\n"),
+            n => n is "HOME" or "APPDATA" ? _dir : null, () => false, CancellationToken.None,
+            (cfg, gate) => WriteTestData.Service(cfg, WriteTestData.RefreshApi(["Completed"]), new FakeDescriptionWriter(), gate));
+        Assert.Equal(2, code);
+        Assert.DoesNotContain("[y/N]", e.ToString());
+        Assert.Contains("Workspace name or ID is empty", e.ToString());
     }
 
     [Fact]

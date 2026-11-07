@@ -296,6 +296,7 @@ public sealed class CliApp
             var assumeYes = pr.GetValue(yes);
             RequireConfirmable(assumeYes);
             var datasetInput = cfg.ResolveDatasetInput(pr.GetValue(ds));
+            cfg.ResolveWorkspaceInput(pr.GetValue(ws));
             if (!assumeYes && !Confirm($"Refresh dataset '{datasetInput}' now? This uses capacity and changes the data every report shows."))
             {
                 _err.WriteLine("aborted: no refresh was started.");
