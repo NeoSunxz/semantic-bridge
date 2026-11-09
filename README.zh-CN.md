@@ -63,7 +63,7 @@ dotnet tool install -g semantic-bridge
 
 ```bash
 docker pull ghcr.io/neosunxz/semantic-bridge:latest
-docker pull neosunxz/semantic-bridge:latest
+docker pull sunxz1203/semantic-bridge:latest
 ```
 
 只有配置了 Docker Hub 机密时才会推送 Docker Hub 镜像，所以目前只发布了 GHCR 镜像。镜像为 `linux/amd64` 和 `linux/arm64` 构建。版本标签和 `latest` 在发布标签时创建。见 [Docker 与 HTTP 传输](#docker-与-http-传输)。

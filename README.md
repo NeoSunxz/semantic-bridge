@@ -63,7 +63,7 @@ This installs the `sbridge` command. It needs the .NET 10 runtime. The release w
 
 ```bash
 docker pull ghcr.io/neosunxz/semantic-bridge:latest
-docker pull neosunxz/semantic-bridge:latest
+docker pull sunxz1203/semantic-bridge:latest
 ```
 
 The Docker Hub image is pushed only when the Docker Hub secrets are configured, so for now only the GHCR image is published. Images are built for `linux/amd64` and `linux/arm64`. Version tags and `latest` are created for release tags. See [Docker and HTTP transport](#docker-and-http-transport).
