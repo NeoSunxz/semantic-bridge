@@ -137,7 +137,7 @@ Pro 工作区没有 XMLA 端点。`query` 和 `refresh` 在那里通过 REST 可
 4. 文件里唯一的那个档案
 5. 文件里没有档案，但设置了 `SBRIDGE_TENANT_ID`、`SBRIDGE_CLIENT_ID` 或 `SBRIDGE_CLIENT_SECRET`（纯环境变量方式，供 Docker 和 CI 使用）。三项凭据都需要。`SBRIDGE_CLOUD`、`SBRIDGE_WORKSPACE` 和 `SBRIDGE_DATASET` 是可选的，单独设置它们不会进入这种模式。
 
-如果文件里有多个档案又没有 `default_profile`，命令会失败。档案名匹配时不区分大小写。文件中的未知键会被拒绝。
+如果文件里有多个档案又没有 `default_profile`，命令会失败。档案名匹配时不区分大小写，因此名称仅大小写不同的两个档案会被拒绝。文件中的未知键会被拒绝。
 
 ### 配置键
 
@@ -151,10 +151,10 @@ Pro 工作区没有 XMLA 端点。`query` 和 `refresh` 在那里通过 REST 可
 | `client_id` | 无 | 必填。 |
 | `client_secret` | 无 | 明文密码。可以用，但不建议。 |
 | `client_secret_env` | 无 | 保存密码的环境变量名。 |
-| `authority_host` | 云预设 | `custom` 必填。 |
+| `authority_host` | 云预设 | `custom` 必填。端点 URL（此键、`token_scope`、`rest_base_url`、`xmla_base`）不得内嵌凭据（如 `user:pw@host`），否则视为配置错误。 |
 | `token_scope` | 云预设 | `custom` 必填。 |
 | `rest_base_url` | 云预设 | `custom` 必填。 |
-| `xmla_base` | 云预设 | `custom` 必填。必须包含 `{workspace}`。 |
+| `xmla_base` | 云预设 | `custom` 必填。必须包含 `{workspace}`，且不得包含 `;`。 |
 | `default_workspace` | 无 | 名称或 ID，未给出 `-w` 或 `workspace` 时使用。 |
 | `default_dataset` | 无 | 名称或 ID，未给出 `-d` 或 `dataset` 时使用。MCP 写工具不使用它（见 MCP 服务器一节）。 |
 | `allow_write` | `false` | 写操作必须设为 `true`（见[写入风险警告](#写入风险警告)）。 |
@@ -206,7 +206,7 @@ profiles:
 
 输出写到 stdout。诊断信息、提示和错误写到 stderr。
 
-工作区和数据集可以用名称或 ID 指定。名称匹配到多个对象时会报错并要求使用 ID。设置了 `default_workspace` 时可以省略 `-w`，设置了 `default_dataset` 时可以省略 `-d`。`describe` 和 `refresh` 也会使用默认数据集，并打印实际解析到的数据集。
+工作区和数据集可以用名称或 ID 指定。名称匹配到多个对象时会报错并要求使用 ID。设置了 `default_workspace` 时可以省略 `-w`，设置了 `default_dataset` 时可以省略 `-d`。`describe` 和 `refresh` 也会使用默认数据集，并打印实际解析到的数据集。只有完全没给 `-w` 或 `-d` 才会用默认值：显式给出空值（`-d ""`、`-w ""`）是用法错误（退出码 `2`），不会“使用默认值”。`--via` 的取值不区分大小写。
 
 | 命令 | 用途 | 主要选项 |
 |---|---|---|
@@ -226,10 +226,12 @@ profiles:
 
 - **查询输出。** 表格或 CSV 格式下，数据行写到 stdout。stderr 得到一行摘要（`-- N row(s), path: xmla|rest, M ms`）、结果被截断时的 `note: result is TRUNCATED.` 行，以及每条警告对应的 `warning:` 行。JSON 输出把所有内容放在 stdout：`columns`、`rows`、`row_count`、`truncated`、`truncation_reason`、`path`、`elapsed_ms` 和 `warnings`。列名按引擎返回的原样给出，例如 `Sales[Amount]` 和 `[Total Sales]`。走 REST 时，`executeQueries` 不返回列类型，列类型是根据 JSON 值推断的，所以日期/时间列显示为 `String`；两条路径下日期/时间值都使用相同的 `yyyy-MM-ddTHH:mm:ss[.fff]` 格式。
 - **截断一定会报告。** 因行数上限被截断的结果，在 JSON 中标记为 `truncated`，在表格或 CSV 输出中显示为 `note:` 行。超过 `max_rows_ceiling` 的 `--max-rows` 会被截到上限，并给出警告。元数据超过 100,000 行时，`schema` 会在警告中说明 schema 不完整。
+- **表格输出。** 单元格中的制表符、换行、其他控制字符和双向覆盖字符会显示为可见转义（`\t`、`\r`、`\n`、`\u{XXXX}`），避免值破坏版式。CSV 和 JSON 输出不变。
+- **每个查询只含一个 EVALUATE。** 一个查询应只包含一个 `EVALUATE`。多余的结果集（来自后续的 `EVALUATE` 语句）不会返回，结果会标记为 `truncated` 并给出原因。命令行和 MCP 的 `run_dax` 工具、XMLA 和 REST 两条路径都是如此。
 - **`--via auto`。** `auto` 使用 XMLA。只有在已知工作区不在专用容量上时才使用 REST，并附带一条警告。XMLA 出错后它不会改用 REST 重试。`schema --via rest` 会被拒绝。
-- **确认。** `describe` 和 `refresh` 在做出更改前会先询问。`-y` 或 `--yes` 跳过询问。当 stdin 不是终端且没有给 `--yes` 时，两者都会在发起任何网络调用之前拒绝，退出码为 `2`。`describe` 在 stderr 打印每处更改的 `old -> new`，并列出未变化的目标。如果你回答否，它以 `1` 退出且不做任何更改。
-- **`refresh --wait`。** 只有最终状态为 `Completed` 时命令才以 `0` 退出。刷新失败、超过 `--timeout`（1–86400 秒，默认 600），或在历史记录中找不到该刷新时，以 `1` 退出。最后一种情况会打印 `status: unknown`：结果未知，刷新可能仍在运行。
-- **退出码。** `0` 成功。`1` 运行时错误：请求失败、`config test` 某一步失败、你对确认回答否，或刷新失败、超时或结果未知。`2` 用法或配置错误：选项或值有误、未知配置键、缺少凭据或档案、写操作被禁用，或 HTTP 绑定需要令牌。`130` 被 Ctrl-C 取消。
+- **确认。** `describe` 和 `refresh` 在做出更改前会先询问。`-y` 或 `--yes` 跳过询问。当 stdin 不是终端且没有给 `--yes` 时，两者都会在发起任何网络调用之前拒绝，退出码为 `2`。`describe` 在 stderr 先打印工作区和数据集，再打印每处更改的 `old -> new`（反斜杠和引号会转义，制表符、换行、其他控制字符和双向覆盖字符显示为 `\t`、`\r`、`\n`、`\u{XXXX}`）和未变化的目标；没有更改时输出 `No changes to apply.`，不打印表格。度量值可以写成 `Name` 或 `[Name]`。如果你回答否，它以 `1` 退出且不做任何更改。
+- **`refresh --wait`。** 只有最终状态为 `Completed` 时命令才以 `0` 退出。刷新失败、超过 `--timeout`（1–86400 秒，默认 600），或在历史记录中找不到该刷新时，以 `1` 退出。不带 `--wait` 使用 `--timeout` 是用法错误。最后一种情况会打印 `status: unknown`：结果未知，刷新可能仍在运行。
+- **退出码。** `0` 成功。`1` 运行时错误：请求失败、HTTP 端口已被占用、`config test` 某一步失败、你对确认回答否，或刷新失败、超时或结果未知。`2` 用法或配置错误：选项或值有误、未知配置键、缺少凭据或档案、写操作被禁用，或 HTTP 绑定需要令牌。`130` 被 Ctrl-C 取消。
 
 ## MCP 服务器
 
@@ -249,7 +251,7 @@ profiles:
 | `update_description` | 是 | `dataset`、`target_type`（`table`、`column` 或 `measure`）、`target`、`description`、`workspace`（可选） |
 | `refresh_dataset` | 是 | `dataset`、`workspace`（可选） |
 
-读取类工具在省略 `dataset` 时使用 `default_dataset`。写入类工具（`update_description`、`refresh_dataset`）始终要求给出 `dataset`，避免 AI 客户端在未明确指定时修改默认数据集。
+读取类工具在省略 `dataset` 时使用 `default_dataset`。写入类工具（`update_description`、`refresh_dataset`）始终要求给出 `dataset`，避免 AI 客户端在未明确指定时修改默认数据集。所有工具中，显式给出空的 `dataset` 或 `workspace` 都是工具错误，不会“使用默认值”。整数参数（`max_rows`、`top`）必须在 32 位范围内。
 
 结果是 JSON 文本。`run_dax` 的结果字段与命令行 JSON 输出相同，被截断时还会带一个 `note` 字段。失败会以工具错误的形式返回，消息中已去除机密，适用时附带提示。调用时缺少参数、参数名未知或类型错误，会返回指出参数名并列出应有参数的工具错误（不会回显参数值）。
 
@@ -393,6 +395,9 @@ docker run --rm -p 127.0.0.1:8080:8080 \
 - `executeQueries` 每次查询最多返回 100,000 行或 1,000,000 个值，先到者为准；每个用户每分钟最多 120 个查询请求（见上面的 Execute Queries 页面）。
 - `executeQueries` 还会把一次响应限制在大约 15 MB 数据。实机观察到的错误是 `DaxByteCountNotSupported`（"More than 15728640 bytes"）。`sbridge` 会把它报告为 `truncated: true` 并附上原因。
 - 如果 REST 在返回部分数据之后出错，结果会被标记为截断。
+- 给出多个 `EVALUATE` 时 REST 可能拒绝该查询（`DaxResultsetCountNotSupported`）。此时 `sbridge` 返回 0 行，并给出与 XMLA 相同的截断原因，而不是报错。
+- NaN 和 ±Infinity 经 REST 返回时是字符串 `"NaN"`、`"Infinity"`、`"-Infinity"`（列类型 `String`）；经 XMLA 则变为 null 并附带警告。请在 DAX 中用 `DIVIDE` 避免。
+- 经 REST 时，0 行的结果没有列名，这是 `executeQueries` 的限制。
 - 微软不支持在启用了行级安全或 SSO 的数据集上使用服务主体（见上面的 Execute Queries 页面）。
 - `refresh` 和 `refresh-status` 使用 REST，所以在这些工作区上也能用。
 

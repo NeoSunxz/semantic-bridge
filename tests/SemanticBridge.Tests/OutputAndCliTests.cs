@@ -166,6 +166,33 @@ public sealed class CliTests : IDisposable
         Assert.Equal(2, (await Run(["query", "-w", "x", "-d", "y", "-f", "xml"])).Code);
     }
 
+    [Theory]
+    [InlineData("--max-rows", "query", "-w", "x", "-d", "y", "EVALUATE x")]
+    [InlineData("--top", "refresh-status", "-w", "x", "-d", "y")]
+    [InlineData("--timeout", "refresh", "-w", "x", "-d", "y", "--wait", "--yes")]
+    [InlineData("--port", "mcp", "--http")]
+    public async Task NonNumericIntegerOptionGivesAFriendlyUsageError(string option, params string[] command)
+    {
+        foreach (var bad in new[] { "abc", "1.5" })
+        {
+            var result = await Run([.. command, option, bad]);
+            Assert.Equal(2, result.Code);
+            Assert.Contains($"Invalid value '{bad}' for {option}: expected a whole number.", result.Err);
+            Assert.DoesNotContain("System.", result.Err + result.Out);
+        }
+    }
+
+    [Fact]
+    public async Task IntegerOptionRangeValidationStillApplies()
+    {
+        var port = await Run(["mcp", "--http", "--port", "70000"]);
+        Assert.Equal(2, port.Code);
+        Assert.Contains("--port must be between 1 and 65535.", port.Err);
+        var timeout = await Run(["refresh", "-d", "y", "--wait", "--timeout", "0", "--yes"]);
+        Assert.Equal(2, timeout.Code);
+        Assert.Contains("--timeout must be between 1 and 86400.", timeout.Err);
+    }
+
     [Fact]
     public async Task QueryInputIsValidatedBeforeAnyNetworkCall()
     {

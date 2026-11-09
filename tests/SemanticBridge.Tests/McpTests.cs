@@ -52,7 +52,7 @@ public sealed class McpToolTests
         Assert.Equal("xmla", root.GetProperty("path").GetString());
         Assert.Equal(7, root.GetProperty("elapsed_ms").GetInt64());
         Assert.True(root.TryGetProperty("warnings", out _));
-        Assert.Contains("aggregation", root.GetProperty("note").GetString());
+        Assert.Contains("truncation_reason", root.GetProperty("note").GetString());
         Assert.Equal(2, xmla.LastMaxRows);
         Assert.DoesNotContain("\n", Text(result));
     }

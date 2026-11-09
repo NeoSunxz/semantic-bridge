@@ -5,6 +5,7 @@ using System.Text;
 using System.Text.Json;
 using SemanticBridge.Core.Auth;
 using SemanticBridge.Core.Config;
+using SemanticBridge.Core.Diagnostics;
 using SemanticBridge.Core.Results;
 using SemanticBridge.Core.Safety;
 
@@ -113,10 +114,28 @@ public sealed class PowerBiRestClient
             serializerSettings = new { includeNulls = true },
         });
         var path = $"/groups/{Uri.EscapeDataString(workspaceId)}/datasets/{Uri.EscapeDataString(datasetId)}/executeQueries";
-        var body = await SendAsync(HttpMethod.Post, path, payload, TimeSpan.FromSeconds(_config.QueryTimeoutSeconds), ErrorKind.Dax, ct).ConfigureAwait(false);
-        var result = ParseQueryResult(body, maxRows, sw.ElapsedMilliseconds);
-        return result;
+        string body;
+        try
+        {
+            body = await SendAsync(HttpMethod.Post, path, payload, TimeSpan.FromSeconds(_config.QueryTimeoutSeconds), ErrorKind.Dax, ct).ConfigureAwait(false);
+        }
+        catch (BridgeException ex) when (ex.HttpStatus == 400 && ex.Code == MultipleResultSetsCode)
+        {
+            // Several EVALUATE statements and the service refuses to return any of them: same outcome as XMLA with an empty first set.
+            return new QueryResult
+            {
+                Columns = [],
+                Rows = [],
+                Truncated = true,
+                TruncationReason = ResultSets.MultipleNotice,
+                Path = ResultPaths.Rest,
+                ElapsedMs = sw.ElapsedMilliseconds,
+            };
+        }
+        return ParseQueryResult(body, maxRows, sw.ElapsedMilliseconds);
     }
+
+    private const string MultipleResultSetsCode = "DaxResultsetCountNotSupported";
 
     /// <summary>Parses an executeQueries response. Public for tests. Detects HTTP 200 responses that carry an error object.</summary>
     public QueryResult ParseQueryResult(string body, int maxRows, long elapsedMs)
@@ -137,14 +156,16 @@ public sealed class PowerBiRestClient
             && tables[0].TryGetProperty("rows", out rows) && rows.ValueKind == JsonValueKind.Array)
             hasRows = true;
 
-        var errorText = error is { } e ? DescribeErrorObject(e) : null;
+        // The service reports several EVALUATE statements as an error; treat it like XMLA does: first set plus a truncation notice.
+        var multipleSets = error is { } me && me.TryGetProperty("code", out var mc) && mc.ValueKind == JsonValueKind.String && mc.GetString() == MultipleResultSetsCode;
+        var errorText = error is { } e && !multipleSets ? DescribeErrorObject(e) : null;
         if (errorText is not null && (!hasRows || rows.GetArrayLength() == 0))
             throw new BridgeException(ErrorKind.Dax, "executeQueries returned an error: " + errorText);
 
         var names = new List<string>();
         var kinds = new Dictionary<string, HashSet<string>>();
         var received = 0;
-        var cap = new RowCap(maxRows);
+        var cap = new RowCap(maxRows, _config.MaxRowsCeiling);
         var capped = false;
         if (hasRows)
         {
@@ -172,6 +193,9 @@ public sealed class PowerBiRestClient
 
         var reasons = new List<string>();
         if (capped && cap.Reason is { } capReason) reasons.Add(capReason);
+        var moreResultSets = multipleSets || (results.ValueKind == JsonValueKind.Array && results.GetArrayLength() > 1) || (first is { } f0
+            && f0.TryGetProperty("tables", out var allTables) && allTables.ValueKind == JsonValueKind.Array && allTables.GetArrayLength() > 1);
+        if (moreResultSets) reasons.Add(ResultSets.MultipleNotice);
         if (errorText is not null)
             reasons.Add("REST executeQueries returned HTTP 200 with an error, so the data is partial: " + errorText);
         if (received >= ServiceMaxRows || (long)received * Math.Max(names.Count, 1) >= ServiceMaxValues)
@@ -230,8 +254,11 @@ public sealed class PowerBiRestClient
         }
         var parts = new[] { code, message }.Concat(details).Where(p => !string.IsNullOrWhiteSpace(p)).ToList();
         var text = parts.Count > 0 ? string.Join(" - ", parts) : error.GetRawText();
-        return Truncate(_scrubber.Scrub(text), 500);
+        return CleanAndLimit(text);
     }
+
+    /// <summary>Engine markup removed, secrets scrubbed, at most 500 characters. REST error text is sanitised here.</summary>
+    private string CleanAndLimit(string text) => Truncate(_scrubber.Scrub(EngineMessage.Clean(text)), 500);
 
     private async Task<string> SendAsync(HttpMethod method, string path, string? jsonBody, TimeSpan timeout, ErrorKind badRequestKind, CancellationToken ct,
         Action<HttpResponseHeaders>? onSuccessHeaders = null, bool retryServerErrors = true)
@@ -274,7 +301,8 @@ public sealed class PowerBiRestClient
                     }
 
                     var kind = response.StatusCode == HttpStatusCode.BadRequest ? badRequestKind : ErrorKind.Rest;
-                    throw new BridgeException(kind, DescribeHttpError(response, text));
+                    var message = DescribeHttpError(response, text, out var errorCode);
+                    throw new BridgeException(kind, message, httpStatus: (int)response.StatusCode, code: errorCode);
                 }
             }
         }
@@ -296,20 +324,25 @@ public sealed class PowerBiRestClient
         return delay > MaxRetryDelay ? MaxRetryDelay : delay;
     }
 
-    private string DescribeHttpError(HttpResponseMessage response, string body)
+    private string DescribeHttpError(HttpResponseMessage response, string body, out string? code)
     {
-        var detail = body;
+        string detail;
+        code = null;
         try
         {
             using var doc = JsonDocument.Parse(body);
             if (doc.RootElement.ValueKind == JsonValueKind.Object && doc.RootElement.TryGetProperty("error", out var err) && err.ValueKind == JsonValueKind.Object)
+            {
                 detail = DescribeErrorObject(err);
+                code = err.TryGetProperty("code", out var c) && c.ValueKind == JsonValueKind.String ? c.GetString() : null;
+            }
+            else detail = CleanAndLimit(body);
         }
         catch (JsonException)
         {
-            // Not JSON: fall back to the raw (scrubbed, then truncated) body.
+            // Not JSON: fall back to the raw (cleaned, scrubbed, then truncated) body.
+            detail = CleanAndLimit(body);
         }
-        detail = Truncate(_scrubber.Scrub(detail), 500);
         var status = $"HTTP {(int)response.StatusCode} {response.ReasonPhrase}".TrimEnd();
         if (response.StatusCode == HttpStatusCode.TooManyRequests)
             detail = ("Too many requests or a refresh limit was reached; wait and retry later. " + detail).Trim();

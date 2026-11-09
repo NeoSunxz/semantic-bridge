@@ -100,7 +100,7 @@ public sealed class DefaultDatasetBehaviourTests : IDisposable
     {
         var r = await Run(false, args);
         Assert.Equal(2, r.Code);
-        Assert.Contains("No dataset given: pass -d or set default_dataset (or SBRIDGE_DATASET).", r.Err);
+        Assert.Contains("No dataset given: pass a dataset (-d in the CLI, `dataset` in MCP) or set default_dataset (or SBRIDGE_DATASET).", r.Err);
         Assert.DoesNotContain(Secret, r.Out + r.Err);
     }
 

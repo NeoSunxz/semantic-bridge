@@ -8,7 +8,7 @@ using SemanticBridge.Core.Safety;
 namespace SemanticBridge.Core.Xmla;
 
 /// <summary>XMLA queries and model metadata through ADOMD.NET.</summary>
-public sealed class AdomdXmlaClient(IAdomdConnectionFactory factory, SecretScrubber scrubber, int timeoutSeconds) : IXmlaClient
+public sealed class AdomdXmlaClient(IAdomdConnectionFactory factory, SecretScrubber scrubber, int timeoutSeconds, int maxRowsCeiling = int.MaxValue) : IXmlaClient
 {
     /// <summary>Row cap for metadata queries (INFO.*), matching the global ceiling.</summary>
     private const int MetadataMaxRows = 100_000;
@@ -17,7 +17,7 @@ public sealed class AdomdXmlaClient(IAdomdConnectionFactory factory, SecretScrub
     {
         var sw = Stopwatch.StartNew();
         using var connection = await factory.OpenAsync(workspace, dataset, ct).ConfigureAwait(false);
-        return await Task.Run(() => ReadQuery(connection, dax, maxRows, sw, ct), ct).ConfigureAwait(false);
+        return await Task.Run(() => ReadQuery(connection, dax, maxRows, maxRowsCeiling, sw, ct), ct).ConfigureAwait(false);
     }
 
     public async Task<ModelSchema> GetSchemaAsync(string workspace, string dataset, string? tableFilter, CancellationToken ct)
@@ -61,7 +61,7 @@ public sealed class AdomdXmlaClient(IAdomdConnectionFactory factory, SecretScrub
 
     private IReadOnlyList<MetaRow> Info(AdomdConnection connection, string function, List<string> warnings, Stopwatch sw, CancellationToken ct)
     {
-        var result = ReadQuery(connection, $"EVALUATE INFO.{function}()", MetadataMaxRows, sw, ct);
+        var result = ReadQuery(connection, $"EVALUATE INFO.{function}()", MetadataMaxRows, null, sw, ct);
         if (result.Truncated) warnings.Add($"INFO.{function} returned more than {MetadataMaxRows} rows; the schema is incomplete.");
         return MetaRow.From(result);
     }
@@ -88,7 +88,7 @@ public sealed class AdomdXmlaClient(IAdomdConnectionFactory factory, SecretScrub
         return [.. rows.Take(MetadataMaxRows)];
     }
 
-    private QueryResult ReadQuery(AdomdConnection connection, string dax, int maxRows, Stopwatch sw, CancellationToken ct)
+    private QueryResult ReadQuery(AdomdConnection connection, string dax, int maxRows, int? ceiling, Stopwatch sw, CancellationToken ct)
     {
         using var command = connection.CreateCommand();
         command.CommandText = dax;
@@ -110,7 +110,7 @@ public sealed class AdomdXmlaClient(IAdomdConnectionFactory factory, SecretScrub
                 columns[i] = new ColumnInfo(names[i], TypeName(reader, i));
             }
 
-            var cap = new RowCap(maxRows);
+            var cap = new RowCap(maxRows, ceiling);
             var sanitizer = new ValueSanitizer();
             while (reader.Read())
             {
@@ -124,12 +124,16 @@ public sealed class AdomdXmlaClient(IAdomdConnectionFactory factory, SecretScrub
                     break;
             }
 
+            // Only the first result set is returned. NextResult skips any unread rows of the current set without
+            // reading them, and extra sets are never read; their existence is reported as truncation.
+            var (truncated, reason) = ResultSets.Combine(cap, reader.NextResult());
+
             return new QueryResult
             {
                 Columns = columns,
                 Rows = cap.Rows,
-                Truncated = cap.Truncated,
-                TruncationReason = cap.Reason,
+                Truncated = truncated,
+                TruncationReason = reason,
                 Path = ResultPaths.Xmla,
                 ElapsedMs = sw.ElapsedMilliseconds,
                 Warnings = sanitizer.Warnings,

@@ -36,9 +36,7 @@ public sealed class BridgeService(ResolvedConfig config, PowerBiRestClient rest,
     /// <summary>Resolves a workspace by name or ID (falling back to default_workspace) and computes its XMLA name.</summary>
     public async Task<ResolvedWorkspace> ResolveWorkspaceAsync(string? workspace, CancellationToken ct)
     {
-        var input = !string.IsNullOrWhiteSpace(workspace) ? workspace : config.DefaultWorkspace;
-        if (string.IsNullOrWhiteSpace(input))
-            throw new BridgeException(ErrorKind.Usage, "No workspace given. Pass -w <name or ID> or set default_workspace in the profile.");
+        var input = config.ResolveWorkspaceInput(workspace);
         var all = await rest.GetWorkspacesAsync(ct).ConfigureAwait(false);
         var ws = NameResolver.Resolve(all, input, "Workspace", w => w.Id, w => w.Name);
         // The XMLA endpoint addresses a workspace by name; duplicate names need the "Name - <guid>" form.
@@ -50,7 +48,7 @@ public sealed class BridgeService(ResolvedConfig config, PowerBiRestClient rest,
     {
         // Only an explicit --via rest is a usage error; a config default of rest still reads metadata over XMLA.
         if (via == QueryVia.Rest)
-            throw new BridgeException(ErrorKind.Usage, RestSchemaUnsupported + " Use --via xmla (or omit --via).");
+            throw new BridgeException(ErrorKind.Usage, RestSchemaUnsupported + " Use via xmla (--via in the CLI, `via` in MCP) or omit it.");
 
         var (ws, ds) = await ResolveAsync(workspace, dataset, ct).ConfigureAwait(false);
         if (via != QueryVia.Xmla && ws.Workspace.IsOnDedicatedCapacity == false)
@@ -99,6 +97,7 @@ public sealed class BridgeService(ResolvedConfig config, PowerBiRestClient rest,
 
     private async Task<(ResolvedWorkspace Workspace, Dataset Dataset)> ResolveAsync(string? workspace, string? dataset, CancellationToken ct)
     {
+        // The dataset input is validated here; ResolveWorkspaceAsync validates the workspace input before any network call.
         var input = config.ResolveDatasetInput(dataset);
         var ws = await ResolveWorkspaceAsync(workspace, ct).ConfigureAwait(false);
         var datasets = await rest.GetDatasetsAsync(ws.Workspace.Id, ct).ConfigureAwait(false);

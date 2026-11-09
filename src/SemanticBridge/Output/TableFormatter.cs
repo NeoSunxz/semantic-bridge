@@ -20,7 +20,7 @@ public static class ValueText
         value is sbyte or byte or short or ushort or int or uint or long or ulong or float or double or decimal;
 }
 
-/// <summary>Plain-text aligned table. Cells are never shortened; line breaks inside a cell are shown as \n.</summary>
+/// <summary>Plain-text aligned table. Cells are never shortened; tabs, line breaks, other control characters and bidi overrides inside a cell are shown as visible escapes.</summary>
 public static class TableFormatter
 {
     public static string Render(IReadOnlyList<string> headers, IReadOnlyList<object?[]> rows)
@@ -49,7 +49,28 @@ public static class TableFormatter
         sb.AppendLine();
     }
 
-    private static string Escape(string s) => s.Replace("\r", string.Empty, StringComparison.Ordinal).Replace("\n", "\\n", StringComparison.Ordinal);
+    /// <summary>Makes control characters and bidi overrides visible so a cell cannot break the layout or reorder the text around it.</summary>
+    internal static string Escape(string s)
+    {
+        if (!s.Any(NeedsEscape)) return s;
+        var sb = new StringBuilder(s.Length + 8);
+        foreach (var c in s)
+        {
+            switch (c)
+            {
+                case '\t': sb.Append("\\t"); break;
+                case '\r': sb.Append("\\r"); break;
+                case '\n': sb.Append("\\n"); break;
+                default:
+                    if (NeedsEscape(c)) sb.Append("\\u{").Append(((int)c).ToString("X4", CultureInfo.InvariantCulture)).Append('}');
+                    else sb.Append(c);
+                    break;
+            }
+        }
+        return sb.ToString();
+    }
+
+    private static bool NeedsEscape(char c) => c < 0x20 || c is >= '\u007F' and <= '\u009F' or >= '\u202A' and <= '\u202E' or >= '\u2066' and <= '\u2069';
 }
 
 /// <summary>Terminal column width of text: East Asian wide and fullwidth characters take 2 columns, combining marks 0.</summary>

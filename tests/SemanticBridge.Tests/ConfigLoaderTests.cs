@@ -162,6 +162,28 @@ public sealed class ConfigLoaderTests : IDisposable
         Assert.DoesNotContain("evil", ex.Message);
     }
 
+    [Theory]
+    [InlineData("authority_host", "https:///user:pw@login.example.test")]
+    [InlineData("xmla_base", "powerbi:///user:pw@api.example.test/v1.0/myorg/{workspace}")]
+    public void ThreeSlashUrlsWithAPathCredentialAreRejectedWithoutEchoingIt(string key, string value)
+    {
+        var authority = key == "authority_host" ? value : "https://login.example.test";
+        var xmla = key == "xmla_base" ? value : "powerbi://api.example.test/v1.0/myorg/{workspace}";
+        var path = Write($$"""
+            profiles:
+              p:
+                cloud: custom
+                authority_host: {{authority}}
+                token_scope: https://example.test/.default
+                rest_base_url: https://api.example.test/v1.0
+                xmla_base: {{xmla}}
+            """);
+        var ex = Assert.Throws<BridgeException>(() => ConfigLoader.Load(new ConfigLoadOptions(path), Env()));
+        Assert.Equal(ErrorKind.Config, ex.Kind);
+        Assert.Contains(key, ex.Message);
+        Assert.DoesNotContain("pw", ex.Message);
+    }
+
     [Fact]
     public void HttpIsAllowedOnlyForLoopbackInACustomCloud()
     {

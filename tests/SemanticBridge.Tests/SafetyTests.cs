@@ -96,6 +96,46 @@ public sealed class RowCapTests
     }
 
     [Fact]
+    public void ReasonNamesBothTheCliFlagAndTheMcpArgument()
+    {
+        var cap = new RowCap(1);
+        cap.Add([1]);
+        cap.Add([2]);
+        Assert.Contains("--max-rows in the CLI, max_rows in MCP", cap.Reason);
+    }
+
+    [Fact]
+    public void MoreResultSetsAloneAreReportedAsTruncation()
+    {
+        var cap = new RowCap(5);
+        cap.Add([1]);
+        var (truncated, reason) = ResultSets.Combine(cap, moreResultSets: true);
+        Assert.True(truncated);
+        Assert.Equal(ResultSets.MultipleNotice, reason);
+        Assert.Contains("multiple EVALUATE", reason);
+    }
+
+    [Fact]
+    public void RowCapAndMoreResultSetsKeepBothReasons()
+    {
+        var cap = new RowCap(1);
+        cap.Add([1]);
+        cap.Add([2]);
+        var (truncated, reason) = ResultSets.Combine(cap, moreResultSets: true);
+        Assert.True(truncated);
+        Assert.Contains("max_rows (1)", reason);
+        Assert.Contains("multiple EVALUATE", reason);
+    }
+
+    [Fact]
+    public void SingleResultSetWithinTheCapIsNotTruncated()
+    {
+        var cap = new RowCap(5);
+        cap.Add([1]);
+        Assert.Equal((false, (string?)null), ResultSets.Combine(cap, moreResultSets: false));
+    }
+
+    [Fact]
     public void ExactlyMaxRowsIsNotTruncated()
     {
         var cap = new RowCap(2);

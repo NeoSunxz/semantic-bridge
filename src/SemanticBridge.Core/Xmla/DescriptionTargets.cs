@@ -50,6 +50,7 @@ public static class DescriptionTargets
 
     public static DescriptionTarget Table(string name) => new(TargetKind.Table, null, RequireName(name, "table"));
 
+    /// <summary>A measure name may also be given as <c>[Name]</c> (the DAX form); <see cref="Resolve"/> tries the exact name first.</summary>
     public static DescriptionTarget Measure(string name) => new(TargetKind.Measure, null, RequireName(name, "measure"));
 
     private static string RequireName(string name, string what) =>
@@ -62,15 +63,30 @@ public static class DescriptionTargets
     public static ModelObjectInfo Resolve(IReadOnlyList<ModelObjectInfo> model, DescriptionTarget target)
     {
         var ofKind = model.Where(o => o.Kind == target.Kind).ToList();
-        List<ModelObjectInfo> Matches(Func<string, string, bool> eq) => target.Kind switch
+        List<ModelObjectInfo> Matches(string name)
         {
-            TargetKind.Table => [.. ofKind.Where(o => eq(o.Name, target.Name))],
-            TargetKind.Column => [.. ofKind.Where(o => eq(o.Table, target.Table!) && eq(o.Name, target.Name))],
-            _ => [.. ofKind.Where(o => eq(o.Name, target.Name))],
-        };
+            List<ModelObjectInfo> With(Func<string, string, bool> eq) => target.Kind switch
+            {
+                TargetKind.Table => [.. ofKind.Where(o => eq(o.Name, name))],
+                TargetKind.Column => [.. ofKind.Where(o => eq(o.Table, target.Table!) && eq(o.Name, name))],
+                _ => [.. ofKind.Where(o => eq(o.Name, name))],
+            };
+            var exact = With((a, b) => string.Equals(a, b, StringComparison.Ordinal));
+            return exact.Count > 0 ? exact : With((a, b) => string.Equals(a, b, StringComparison.OrdinalIgnoreCase));
+        }
 
-        var found = Matches((a, b) => string.Equals(a, b, StringComparison.Ordinal));
-        if (found.Count == 0) found = Matches((a, b) => string.Equals(a, b, StringComparison.OrdinalIgnoreCase));
+        var found = Matches(target.Name);
+        // Fallback only: [Name] with no brackets inside is the DAX form of the measure Name.
+        var n = target.Name;
+        if (found.Count == 0 && target.Kind == TargetKind.Measure && n.Length > 2 && n[0] == '[' && n[^1] == ']' && n.IndexOfAny(['[', ']'], 1, n.Length - 2) < 0)
+        {
+            var inner = Matches(n[1..^1]);
+            if (inner.Count > 0)
+            {
+                found = inner;
+                target = target with { Name = n[1..^1] };
+            }
+        }
         if (found.Count == 1) return found[0];
         if (found.Count > 1)
             throw new BridgeException(ErrorKind.Ambiguous,

@@ -98,7 +98,12 @@ public sealed class CliApp
     private static Option<string?> ViaOption()
     {
         var option = new Option<string?>("--via") { Description = "Path: auto (XMLA, REST only when the workspace has no XMLA endpoint), xmla or rest." };
-        option.AcceptOnlyFromAmong("auto", "xmla", "rest");
+        // Case-insensitive like the MCP `via` argument (AcceptOnlyFromAmong is case-sensitive).
+        option.Validators.Add(r =>
+        {
+            if (r.Tokens.Count > 0 && !Array.Exists(["auto", "xmla", "rest"], v => string.Equals(v, r.Tokens[0].Value.Trim(), StringComparison.OrdinalIgnoreCase)))
+                r.AddError($"Invalid value '{r.Tokens[0].Value}' for --via: expected auto, xmla or rest.");
+        });
         return option;
     }
 
@@ -178,7 +183,7 @@ public sealed class CliApp
         {
             var cfg = LoadConfig(pr);
             var viaValue = pr.GetValue(via) is { } v ? ConfigLoader.ParseVia(v, "--via") : (QueryVia?)null;
-            using var rt = CreateRuntime(cfg);
+            using var rt = OpenService(cfg, null);
             var schema = await rt.Service.GetSchemaAsync(pr.GetValue(ws), pr.GetValue(ds), pr.GetValue(table), viaValue, ct).ConfigureAwait(false);
             if (pr.GetValue(format) == "json") _out.WriteLine(JsonOutput.Serialize(schema));
             else
@@ -200,7 +205,7 @@ public sealed class CliApp
         var ds = DatasetOption();
         var file = new Option<string?>("--file") { Description = "Read the DAX query from a file." };
         var format = FormatOption("table", "json", "csv");
-        var maxRows = new Option<int?>("--max-rows") { Description = "Row limit for this query (default max_rows; capped by max_rows_ceiling, which is reported)." };
+        var maxRows = new Option<int?>("--max-rows") { Description = "Row limit for this query (default max_rows; capped by max_rows_ceiling, which is reported).", CustomParser = r => ParseWholeNumber(r, "--max-rows") };
         var via = ViaOption();
         cmd.Arguments.Add(dax);
         foreach (var o in new Option[] { ws, ds, file, format, maxRows, via }) cmd.Options.Add(o);
@@ -209,7 +214,7 @@ public sealed class CliApp
             var cfg = LoadConfig(pr);
             var text = ReadQueryText(pr.GetValue(dax), pr.GetValue(file));
             var viaValue = pr.GetValue(via) is { } v ? ConfigLoader.ParseVia(v, "--via") : (QueryVia?)null;
-            using var rt = CreateRuntime(cfg);
+            using var rt = OpenService(cfg, null);
             var result = await rt.Service.QueryAsync(pr.GetValue(ws), pr.GetValue(ds), text, pr.GetValue(maxRows), viaValue, ct).ConfigureAwait(false);
             WriteQueryResult(pr.GetValue(format)!, result);
             return ExitOk;
@@ -242,12 +247,12 @@ public sealed class CliApp
 
             using var rt = OpenService(cfg, gate);
             var plan = await rt.Service.PlanDescriptionsAsync(pr.GetValue(ws), pr.GetValue(ds), updates, ct).ConfigureAwait(false);
+            _err.WriteLine($"Workspace '{plan.Workspace}', dataset '{plan.Dataset}':");
             foreach (var u in plan.Unchanged) _err.WriteLine($"unchanged: {u.Display} already has this description.");
             var applied = false;
             if (plan.Changes.Count == 0) _err.WriteLine("No changes to apply.");
             else
             {
-                _err.WriteLine($"Workspace '{plan.Workspace}', dataset '{plan.Dataset}':");
                 foreach (var c in plan.Changes) _err.WriteLine($"  {c.Display}: {Quote(c.Old)} -> {Quote(c.New)}");
                 if (!assumeYes && !Confirm($"Apply {plan.Changes.Count} change(s)?"))
                 {
@@ -260,7 +265,7 @@ public sealed class CliApp
 
             if (pr.GetValue(format) == "json")
                 _out.WriteLine(JsonOutput.Serialize(new { applied, workspace = plan.Workspace, dataset = plan.Dataset, changes = plan.Changes, unchanged = plan.Unchanged }));
-            else
+            else if (plan.Changes.Count > 0)
                 _out.Write(TableFormatter.Render(["type", "target", "old", "new"], plan.Changes.Select(c => new object?[] { c.Type, c.Display, c.Old, c.New }).ToList()));
             if (applied) _err.WriteLine($"-- applied {plan.Changes.Count} change(s)");
             return ExitOk;
@@ -274,21 +279,24 @@ public sealed class CliApp
         var ws = WorkspaceOption();
         var ds = DatasetOption();
         var wait = new Option<bool>("--wait") { Description = "Poll until the refresh completes, fails or --timeout passes." };
-        var timeout = new Option<int>("--timeout") { Description = "With --wait: seconds to wait (1..86400).", DefaultValueFactory = _ => 600 };
+        var timeout = new Option<int>("--timeout") { Description = "With --wait: seconds to wait (1..86400).", DefaultValueFactory = _ => 600, CustomParser = r => ParseWholeNumber(r, "--timeout") ?? 600 };
         timeout.Validators.Add(r =>
         {
-            if (r.GetValueOrDefault<int>() is < 1 or > 86400) r.AddError("--timeout must be between 1 and 86400.");
+            if (r.Tokens.Count > 0 && int.TryParse(r.Tokens[0].Value, out var v) && v is < 1 or > 86400) r.AddError("--timeout must be between 1 and 86400.");
         });
         var yes = new Option<bool>("--yes", "-y") { Description = "Refresh without asking for confirmation (for scripts)." };
         foreach (var o in new Option[] { ws, ds, wait, timeout, yes }) cmd.Options.Add(o);
         cmd.SetAction((pr, ct) => Run(async () =>
         {
+            if (!pr.GetValue(wait) && pr.GetResult(timeout) is { Implicit: false })
+                throw new BridgeException(ErrorKind.Usage, "--timeout needs --wait.");
             var cfg = LoadConfig(pr);
             var gate = new WriteGate(cfg.AllowWrite);
             gate.EnsureOpen();
             var assumeYes = pr.GetValue(yes);
             RequireConfirmable(assumeYes);
             var datasetInput = cfg.ResolveDatasetInput(pr.GetValue(ds));
+            cfg.ResolveWorkspaceInput(pr.GetValue(ws));
             if (!assumeYes && !Confirm($"Refresh dataset '{datasetInput}' now? This uses capacity and changes the data every report shows."))
             {
                 _err.WriteLine("aborted: no refresh was started.");
@@ -333,7 +341,7 @@ public sealed class CliApp
         var cmd = new Command("refresh-status", "Show a dataset's recent refresh history (newest first).");
         var ws = WorkspaceOption();
         var ds = DatasetOption();
-        var top = new Option<int>("--top") { Description = $"How many entries (1..{BridgeService.MaxRefreshHistory}).", DefaultValueFactory = _ => 5 };
+        var top = new Option<int>("--top") { Description = $"How many entries (1..{BridgeService.MaxRefreshHistory}).", DefaultValueFactory = _ => 5, CustomParser = r => ParseWholeNumber(r, "--top") ?? 5 };
         var format = FormatOption("table", "json", "csv");
         foreach (var o in new Option[] { ws, ds, top, format }) cmd.Options.Add(o);
         cmd.SetAction((pr, ct) => Run(async () =>
@@ -352,10 +360,10 @@ public sealed class CliApp
         var cmd = new Command("mcp", "Run the MCP server (stdio by default; --http for Streamable HTTP). Uses one profile for its lifetime.");
         var http = new Option<bool>("--http") { Description = "Serve Streamable HTTP instead of stdio. Bearer token from SBRIDGE_HTTP_TOKEN (required on a non-loopback host)." };
         var host = new Option<string>("--host") { Description = "HTTP bind address (use 0.0.0.0 to listen on all interfaces).", DefaultValueFactory = _ => "127.0.0.1" };
-        var port = new Option<int>("--port") { Description = "HTTP port.", DefaultValueFactory = _ => 8080 };
+        var port = new Option<int>("--port") { Description = "HTTP port.", DefaultValueFactory = _ => 8080, CustomParser = r => ParseWholeNumber(r, "--port") ?? 8080 };
         port.Validators.Add(r =>
         {
-            if (r.GetValueOrDefault<int>() is < 1 or > 65535) r.AddError("--port must be between 1 and 65535.");
+            if (r.Tokens.Count > 0 && int.TryParse(r.Tokens[0].Value, out var v) && v is < 1 or > 65535) r.AddError("--port must be between 1 and 65535.");
         });
         var noAuth = new Option<bool>("--no-auth") { Description = "Allow --http on a non-loopback --host without SBRIDGE_HTTP_TOKEN (unauthenticated; dangerous). Env: SBRIDGE_HTTP_NO_AUTH=1." };
         var allowHttpWrite = new Option<bool>("--allow-http-write") { Description = "Allow write tools over HTTP (also needs allow_write: true). Env: SBRIDGE_ALLOW_HTTP_WRITE=1." };
@@ -379,7 +387,15 @@ public sealed class CliApp
             _scrubber.Register(token?.Trim());
             var unauthenticated = pr.GetValue(noAuth) || _getEnv(McpHost.EnvHttpNoAuth) == "1";
             await using var app = McpHost.BuildHttp(tools, new HttpOptions(pr.GetValue(host)!, pr.GetValue(port), string.IsNullOrEmpty(token) ? null : token, unauthenticated), _err);
-            await app.StartAsync(ct).ConfigureAwait(false);
+            try
+            {
+                await app.StartAsync(ct).ConfigureAwait(false);
+            }
+            catch (Exception ex) when (McpHost.IsBindFailure(ex))
+            {
+                _err.WriteLine($"error: cannot listen on {pr.GetValue(host)}:{pr.GetValue(port)}: " + (McpHost.IsAddressInUse(ex) ? "address already in use" : _scrubber.Scrub(ex.Message)));
+                return ExitRuntime;
+            }
             _err.WriteLine($"mcp: listening on {string.Join(", ", app.Urls.Select(u => u + "/mcp"))} (profile '{cfg.ProfileName}')");
             await app.WaitForShutdownAsync(ct).ConfigureAwait(false);
             return ExitOk;
@@ -435,7 +451,9 @@ public sealed class CliApp
         return string.Equals(answer, "y", StringComparison.OrdinalIgnoreCase) || string.Equals(answer, "yes", StringComparison.OrdinalIgnoreCase);
     }
 
-    private static string Quote(string? value) => value is null ? "(none)" : "\"" + value.Replace("\r", "\\r", StringComparison.Ordinal).Replace("\n", "\\n", StringComparison.Ordinal) + "\"";
+    // Backslash and quote first, then the same visible escapes as table cells (tab, line breaks, control and bidi characters).
+    private static string Quote(string? value) => value is null ? "(none)"
+        : "\"" + TableFormatter.Escape(value.Replace("\\", "\\\\", StringComparison.Ordinal).Replace("\"", "\\\"", StringComparison.Ordinal)) + "\"";
 
     private string ReadQueryText(string? argument, string? file)
     {
@@ -514,6 +532,20 @@ public sealed class CliApp
         return new ServiceScope(runtime.Service, runtime);
     }
 
+    /// <summary>Parses the single token of an integer option; a bad value becomes a usage error that names the option.</summary>
+    private static int? ParseWholeNumber(System.CommandLine.Parsing.ArgumentResult result, string option)
+    {
+        var token = result.Tokens.Count > 0 ? result.Tokens[0].Value : null;
+        if (token is null) return null;
+        if (int.TryParse(token, System.Globalization.NumberStyles.Integer, System.Globalization.CultureInfo.InvariantCulture, out var value)) return value;
+        // A well-formed integer that does not fit in 32 bits is out of range, not malformed.
+        var outOfRange = System.Numerics.BigInteger.TryParse(token, System.Globalization.NumberStyles.Integer, System.Globalization.CultureInfo.InvariantCulture, out _);
+        result.AddError(outOfRange
+            ? $"Invalid value '{token}' for {option}: the number is out of range."
+            : $"Invalid value '{token}' for {option}: expected a whole number.");
+        return null;
+    }
+
     private async Task<int> Run(Func<Task<int>> body)
     {
         try
@@ -527,22 +559,22 @@ public sealed class CliApp
         }
         catch (BridgeException ex)
         {
-            ReportError(ex.Message, withHint: ex.Kind != ErrorKind.Usage);
+            ReportError(ex.Message, ex.Kind != ErrorKind.Usage ? ex : null);
             return ex.IsUsageError ? ExitUsage : ExitRuntime;
         }
         catch (Exception ex)
         {
-            ReportError($"unexpected {ex.GetType().Name}: {ex.Message}");
+            ReportError($"unexpected {ex.GetType().Name}: {ex.Message}", ex);
             return ExitRuntime;
         }
     }
 
     // Usage errors are the user's own invalid input (for example the explicit --via rest refusal); infrastructure hints would mislead.
-    private void ReportError(string message, bool withHint = true)
+    private void ReportError(string message, Exception? hintFor)
     {
         var clean = _scrubber.Scrub(message);
         _err.WriteLine("error: " + clean);
-        if (withHint && ErrorHints.For(clean) is { } hint) _err.WriteLine("hint: " + hint);
+        if (hintFor is not null && ErrorHints.For(hintFor, clean) is { } hint) _err.WriteLine("hint: " + hint);
     }
 
     private Task<int> ConfigInit(string? configOption, bool force)
@@ -571,6 +603,7 @@ public sealed class CliApp
 
     private async Task<int> ConfigTest(ResolvedConfig cfg, string? workspace, CancellationToken ct)
     {
+        if (workspace is not null && string.IsNullOrWhiteSpace(workspace)) throw new BridgeException(ErrorKind.Usage, "Workspace name or ID is empty.");
         _out.WriteLine($"profile: {cfg.ProfileName}, cloud: {cfg.Cloud.ToString().ToLowerInvariant()}");
         using var rt = CreateRuntime(cfg);
         var failed = false;
@@ -627,7 +660,7 @@ public sealed class CliApp
         {
             var message = _scrubber.Scrub(ex.Message);
             _out.WriteLine($"[FAIL] {name}: {message} ({sw.ElapsedMilliseconds} ms)");
-            if (ErrorHints.For(message) is { } hint) _out.WriteLine("       hint: " + hint);
+            if (ErrorHints.For(ex, message) is { } hint) _out.WriteLine("       hint: " + hint);
             return false;
         }
     }

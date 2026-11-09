@@ -59,6 +59,9 @@ public static partial class ConfigLoader
 
         // 2. Pick the profile.
         var profiles = file?.Profiles ?? [];
+        var duplicate = profiles.Keys.GroupBy(k => k, StringComparer.OrdinalIgnoreCase).FirstOrDefault(g => g.Count() > 1);
+        if (duplicate is not null)
+            throw new BridgeException(ErrorKind.Config, $"Config file {path} has profiles whose names differ only in case ({string.Join(", ", duplicate)}). Profile names are case-insensitive; rename one.");
         var requested = !string.IsNullOrWhiteSpace(options.Profile) ? options.Profile : E(EnvProfile);
         var requestedSource = !string.IsNullOrWhiteSpace(options.Profile) ? "--profile" : $"env {EnvProfile}";
         string profileName;
@@ -127,12 +130,18 @@ public static partial class ConfigLoader
                 throw new BridgeException(ErrorKind.Config,
                     $"cloud 'custom' requires authority_host, token_scope, rest_base_url and xmla_base; missing: {string.Join(", ", missing)}.");
         }
+        if (xmla!.Contains(';'))
+            throw new BridgeException(ErrorKind.Config, "xmla_base must not contain ';' (connection-string properties are not allowed).");
         RequireHttpsUrl("authority_host", authority!, cloud == Cloud.Custom);
         RequireHttpsUrl("rest_base_url", rest!, cloud == Cloud.Custom);
         if (!xmla!.StartsWith("powerbi://", StringComparison.OrdinalIgnoreCase) && !xmla.StartsWith("asazure://", StringComparison.OrdinalIgnoreCase))
             throw new BridgeException(ErrorKind.Config, "xmla_base must start with powerbi:// or asazure://.");
         if (!xmla.Contains(CloudPresets.WorkspacePlaceholder, StringComparison.Ordinal))
             throw new BridgeException(ErrorKind.Config, $"xmla_base must contain the {CloudPresets.WorkspacePlaceholder} placeholder, e.g. powerbi://api.powerbi.com/v1.0/myorg/{{workspace}}.");
+        RejectUserInfo("authority_host", authority!);
+        RejectUserInfo("token_scope", scope!);
+        RejectUserInfo("rest_base_url", rest!);
+        RejectUserInfo("xmla_base", xmla!);
 
         // 4. Credentials.
         var tenant = Credential("tenant_id", EnvTenantId, section.TenantId);
@@ -247,6 +256,24 @@ public static partial class ConfigLoader
                 return (key, value ?? new ProfileSection());
         var available = profiles.Count == 0 ? "none defined" : string.Join(", ", profiles.Keys);
         throw new BridgeException(ErrorKind.Config, $"Profile '{name}' ({source}) not found. Available profiles: {available}.");
+    }
+
+    /// <summary>
+    /// Rejects an endpoint that is not a clean absolute URI or that carries credentials (user@ or user:pw@ in the authority).
+    /// An '@' in the path or query is fine. Names only the key, never the value.
+    /// </summary>
+    private static void RejectUserInfo(string key, string value)
+    {
+        // token_scope may be a bare scope string; only values written as URLs are inspected.
+        if (key == "token_scope" && !value.Contains("://", StringComparison.Ordinal)) return;
+        var probe = value.Replace(CloudPresets.WorkspacePlaceholder, "w", StringComparison.Ordinal);
+        if (!Uri.TryCreate(probe, UriKind.Absolute, out var uri))
+            throw new BridgeException(ErrorKind.Config, $"{key} is not a valid absolute URL.");
+        // A three-slash form such as powerbi:///user:pw@host/... puts the credential in the path.
+        if (uri.Host.Length == 0)
+            throw new BridgeException(ErrorKind.Config, $"{key} is not a valid absolute URL.");
+        if (uri.UserInfo.Length > 0)
+            throw new BridgeException(ErrorKind.Config, $"{key} must not contain credentials (user info before the host).");
     }
 
     /// <summary>Requires an absolute https URL; plain http is accepted only for a loopback host in a custom cloud. The value is never echoed.</summary>

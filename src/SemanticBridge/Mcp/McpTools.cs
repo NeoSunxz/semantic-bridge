@@ -20,7 +20,7 @@ namespace SemanticBridge.Cli.Mcp;
 public sealed class McpTools(BridgeService service, SecretScrubber scrubber)
 {
     public const string TruncationNote =
-        "The result is TRUNCATED: more rows exist than were returned. Do not rely on it as complete. Re-run with aggregation or filters (SUMMARIZECOLUMNS, TOPN, FILTER) instead of reading raw rows.";
+        "The result is TRUNCATED and incomplete; see truncation_reason for why and what to do. Do not rely on it as complete.";
 
     internal SecretScrubber Scrubber => scrubber;
 
@@ -136,7 +136,7 @@ public sealed class McpTools(BridgeService service, SecretScrubber scrubber)
         catch (Exception ex)
         {
             var message = scrubber.Scrub(ex is BridgeException ? ex.Message : $"unexpected {ex.GetType().Name}: {ex.Message}");
-            if (ex is not BridgeException { Kind: ErrorKind.Usage } && ErrorHints.For(message) is { } hint) message += " Hint: " + hint;
+            if (ex is not BridgeException { Kind: ErrorKind.Usage } && ErrorHints.For(ex, message) is { } hint) message += " Hint: " + hint;
             return Error(message);
         }
     }
