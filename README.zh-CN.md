@@ -6,7 +6,7 @@ Semantic Bridge for Power BI 是一个命令行工具（`sbridge`）加一个 MC
 
 本项目与微软无关联，也未获微软认可。Power BI 是微软的商标。
 
-> **状态：v0.1.0，首个正式版本。** [v1 计划](docs/superpowers/plans/2026-11-04-v1-plan.md)的第 1–5 阶段已实现。目前的实机验证只覆盖 linux-x64 加中国区（世纪互联）租户；全球云尚未实机验证。见[状态与平台](#状态与平台)。
+> **状态：v0.1.1。** v0.1.1 修复了两种结果可能不完整却未被标出的情况：一次查询中包含多条 EVALUATE 语句，以及 MCP 写入工具的 dataset 为空时回退到默认数据集。[v1 计划](docs/superpowers/plans/2026-11-04-v1-plan.md)的第 1–5 阶段已实现。目前的实机验证只覆盖 linux-x64 加中国区（世纪互联）租户；全球云尚未实机验证。见[状态与平台](#状态与平台)。
 
 ## 它是什么，不是什么
 
@@ -39,7 +39,7 @@ Semantic Bridge for Power BI 是一个命令行工具（`sbridge`）加一个 MC
 
 ## 状态与平台
 
-- 第 1–5 阶段已实现，并已发布为 v0.1.0（GitHub Releases 和 GHCR 镜像）。
+- 第 1–5 阶段已实现，并已发布为 v0.1.1（GitHub Releases 和 GHCR 镜像）。v0.1.1 修复了两种结果可能不完整却未被标出的情况：一次查询中包含多条 EVALUATE 语句，以及 MCP 写入工具的 dataset 为空时回退到默认数据集。
 - 2026-11-07 在 linux-x64 上，针对中国区（世纪互联）的 Premium Per User（PPU）工作区做了实机验证：XMLA（使用 MSAL 访问令牌认证）、REST、schema、查询、刷新、刷新状态、描述写入、stdio 和 HTTP 两种 MCP，以及 linux-x64 单文件二进制。
 - 全球云尚未实机验证。Pro（仅 REST）工作区尚未在真实租户上测试。
 - 其他 RID 上的 XMLA 未验证：`linux-arm64`、`win-x64`、`win-arm64`、`osx-arm64`、`osx-x64`。
@@ -63,7 +63,7 @@ dotnet tool install -g semantic-bridge
 
 ```bash
 docker pull ghcr.io/neosunxz/semantic-bridge:latest
-docker pull neosunxz/semantic-bridge:latest
+docker pull sunxz1203/semantic-bridge:latest
 ```
 
 只有配置了 Docker Hub 机密时才会推送 Docker Hub 镜像，所以目前只发布了 GHCR 镜像。镜像为 `linux/amd64` 和 `linux/arm64` 构建。版本标签和 `latest` 在发布标签时创建。见 [Docker 与 HTTP 传输](#docker-与-http-传输)。
