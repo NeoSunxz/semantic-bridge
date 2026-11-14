@@ -6,7 +6,7 @@
     <PackageVersion Include="Microsoft.AnalysisServices.AdomdClient" Version="19.118.3" />
     <PackageVersion Include="Microsoft.AnalysisServices" Version="19.118.3" />
     <PackageVersion Include="Microsoft.Identity.Client" Version="4.92.0" />
-    <PackageVersion Include="System.CommandLine" Version="2.0.14" />
+    <PackageVersion Include="System.CommandLine" Version="3.0.0" />
     <PackageVersion Include="YamlDotNet" Version="18.1.0" />
     <PackageVersion Include="ModelContextProtocol" Version="2.4.0" />
     <PackageVersion Include="ModelContextProtocol.AspNetCore" Version="2.4.0" />
